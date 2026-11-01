@@ -1,0 +1,92 @@
+/**
+ * Apply an AI classification file to the library.
+ * The result goes into `expression.ai` only — the user's own category /
+ * importance and the imported data are never touched.
+ */
+import { db } from '../db/db';
+import type { Category, Example, ExampleKind, PronunciationGuide } from '../db/types';
+import { CATEGORY_LABELS } from '../db/types';
+import { normalizeKey } from '../import/clean';
+import { nowIso, uid } from './util';
+
+export const AI_FORMAT = 'english-mastery-ai-assessment';
+
+export interface AiAssessmentFile {
+  format: typeof AI_FORMAT;
+  version: number;
+  model?: string;
+  generatedAt?: string;
+  items: { key?: string; text: string; category: Category; importance: number; rationale?: string; meaning?: string; examples?: { kind: ExampleKind; en: string; ja: string; pronunciation?: Omit<PronunciationGuide, 'origin' | 'status'> }[] }[];
+}
+
+export function validateAiFile(obj: unknown): { ok: true; file: AiAssessmentFile } | { ok: false; error: string } {
+  const f = obj as Partial<AiAssessmentFile>;
+  if (!f || f.format !== AI_FORMAT || !Array.isArray(f.items)) return { ok: false, error: 'AI分類ファイルではありません' };
+  const bad = f.items.filter((i) => !(i.category in CATEGORY_LABELS) || typeof i.importance !== 'number').length;
+  if (bad > 0) return { ok: false, error: `不正な行が${bad}件あります` };
+  return { ok: true, file: f as AiAssessmentFile };
+}
+
+export interface ApplyResult {
+  items: number;
+  matchedExpressions: number;
+  unmatchedItems: number;
+  userOverridesKept: number;
+  examplesAdded: number;
+  pronunciationsAdded: number;
+}
+
+export async function applyAiAssessment(file: AiAssessmentFile): Promise<ApplyResult> {
+  const byKey = new Map<string, AiAssessmentFile['items'][number]>();
+  for (const it of file.items) byKey.set(it.key ?? normalizeKey(it.text), it);
+  const ts = nowIso();
+  let matched = 0;
+  let overrides = 0;
+  let examplesAdded = 0;
+  let pronunciationsAdded = 0;
+  const guide = (g: Omit<PronunciationGuide, 'origin' | 'status'>): PronunciationGuide => ({ ...g, origin: 'ai', status: 'needs_review' });
+  const usedKeys = new Set<string>();
+  await db.transaction('rw', db.expressions, async () => {
+    const all = await db.expressions.toArray();
+    const updates = [];
+    for (const e of all) {
+      const it = byKey.get(e.normalized);
+      if (!it) continue;
+      usedKeys.add(e.normalized);
+      matched++;
+      if (e.category != null || e.importance != null) overrides++;
+      // AI examples are added only when the expression has none (never overwrite the user's).
+      let examples: Example[] = e.examples;
+      if (e.examples.length === 0 && it.examples?.length) {
+        examples = it.examples.slice(0, 3).map((x) => ({
+          id: uid(), kind: x.kind, en: x.en, ja: x.ja, origin: 'ai' as const, status: 'unverified' as const,
+          ...(x.pronunciation ? { pronunciation: guide(x.pronunciation) } : {}),
+        }));
+        examplesAdded++;
+        pronunciationsAdded += it.examples.filter((x) => x.pronunciation).length;
+      } else if (it.examples?.some((x) => x.pronunciation)) {
+        // Attach guides to existing examples with the same sentence, only where none exists yet.
+        examples = e.examples.map((ex) => {
+          const src = it.examples!.find((x) => x.pronunciation && x.en.trim() === ex.en.trim());
+          if (!src || ex.pronunciation) return ex;
+          pronunciationsAdded++;
+          return { ...ex, pronunciation: guide(src.pronunciation!) };
+        });
+      }
+      updates.push({
+        ...e,
+        examples,
+        ai: {
+          category: it.category,
+          importance: Math.max(0, Math.min(100, Math.round(it.importance))),
+          rationale: it.rationale,
+          meaning: it.meaning,
+          model: file.model,
+          generatedAt: file.generatedAt ?? ts,
+        },
+      });
+    }
+    await db.expressions.bulkPut(updates);
+  });
+  return { items: file.items.length, matchedExpressions: matched, unmatchedItems: file.items.length - usedKeys.size, userOverridesKept: overrides, examplesAdded, pronunciationsAdded };
+}
