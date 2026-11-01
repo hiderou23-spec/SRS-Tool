@@ -13,6 +13,7 @@ import SettingsPage from './pages/Settings';
 import ImportPage from './pages/Import';
 import Duplicates from './pages/Duplicates';
 import Backlog from './pages/Backlog';
+import Review from './pages/Review';
 
 const TABS = [
   { key: 'home', label: 'Home', Icon: IconHome },
@@ -48,9 +49,10 @@ export default function App() {
     case 'import': page = <ImportPage />; break;
     case 'duplicates': page = <Duplicates />; break;
     case 'backlog': page = <Backlog />; break;
+    case 'review': page = <Review />; break;
     default: page = <Home />;
   }
-  const activeTab = ['import', 'duplicates', 'backlog'].includes(top) ? 'settings' : top;
+  const activeTab = ['import', 'duplicates', 'backlog', 'review'].includes(top) ? 'settings' : top;
 
   return (
     <div className="app">

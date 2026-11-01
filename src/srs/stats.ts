@@ -31,6 +31,13 @@ export interface ProgressStats {
   categories: { key: Category | 'uncategorized'; label: string; total: number; established: number }[];
   last14: { day: string; ms: number; reviews: number }[];
   dueBacklog: { dueNow: number; overdue7: number };
+  /** Reviews due on each of the next 14 days (index 0 = tomorrow). */
+  forecast14: number[];
+  /** Share of non-Again answers on mature reviews in the last 30 days, per mode. */
+  accuracyByMode: { reading: number | null; speaking: number | null };
+  /** Average active minutes on days studied in the last 30 days. */
+  avgMinutesPerStudyDay: number | null;
+  content: { withExamples: number; withPron: number; aiPending: number; total: number };
 }
 
 function modeProgress(cards: ReviewCard[]): ModeProgress {
@@ -117,7 +124,30 @@ export async function computeProgress(now = new Date()): Promise<ProgressStats> 
     if (now.getTime() - due > 7 * 86400_000) overdue7++;
   }
 
+  const forecast14 = Array.from({ length: 14 }, () => 0);
+  for (const c of activeCards) {
+    if (c.introducedAt === null || c.mode === 'listening' || (c.mode === 'production' && jaIds.has(c.expressionId))) continue;
+    const days = Math.floor((new Date(c.due).getTime() - now.getTime()) / 86400_000);
+    if (days >= 0 && days < 14) forecast14[days]++;
+  }
+  const acc = (mode: string) => {
+    const xs = mature.filter((l) => l.mode === mode);
+    return xs.length ? xs.filter((l) => l.rating > 1).length / xs.length : null;
+  };
+  const recentDays = [...days.entries()].filter(([k]) => k >= dayKey(new Date(now.getTime() - 30 * 86400_000), settings.dayStartHour));
+  const avgMinutesPerStudyDay = recentDays.length ? recentDays.reduce((s, [, v]) => s + v.ms, 0) / recentDays.length / 60000 : null;
+  const content = {
+    total: active.length,
+    withExamples: active.filter((e) => e.examples.length > 0).length,
+    withPron: active.filter((e) => e.examples.some((x) => x.pronunciation)).length,
+    aiPending: active.filter((e) => e.examples.some((x) => (x.origin === 'ai' && x.status !== 'verified') || (x.pronunciation && x.pronunciation.status !== 'verified')) || (!e.meaning && !!e.ai?.meaning)).length,
+  };
+
   return {
+    forecast14,
+    accuracyByMode: { reading: acc('recognition'), speaking: acc('production') },
+    avgMinutesPerStudyDay,
+    content,
     totalExpressions: exprs.length,
     activeExpressions: active.length,
     studyDays: days.size,

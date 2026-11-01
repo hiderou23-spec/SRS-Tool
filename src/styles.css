@@ -258,3 +258,15 @@ a { color: var(--accent); }
 table.preview { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 table.preview td, table.preview th { border-bottom: 0.5px solid var(--line); padding: 6px; text-align: left; vertical-align: top; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
 .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* Standalone PWA: keep scrolled content from showing through the status bar. */
+.app::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top, 0px);
+  background: var(--bg);
+  z-index: 25;
+}
