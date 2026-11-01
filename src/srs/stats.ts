@@ -50,7 +50,8 @@ export async function computeProgress(now = new Date()): Promise<ProgressStats> 
   const activeIds = new Set(active.map((e) => e.id));
   const activeCards = cards.filter((c) => activeIds.has(c.expressionId));
   const rec = activeCards.filter((c) => c.mode === 'recognition');
-  const prod = activeCards.filter((c) => c.mode === 'production');
+  const jaIds = new Set(active.filter((e) => e.lang === 'ja').map((e) => e.id));
+  const prod = activeCards.filter((c) => c.mode === 'production' && !jaIds.has(c.expressionId));
 
   const days = new Map<string, { ms: number; reviews: number }>();
   for (const l of logs) {

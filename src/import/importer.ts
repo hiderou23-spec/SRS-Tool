@@ -21,6 +21,7 @@ export interface AnalyzedRow {
   normalized: string;
   sourceKey: string;
   status: 'new' | 'already_imported' | 'exact_duplicate' | 'failed';
+  lang: 'en' | 'ja';
   reason?: string;
   /** Same normalized English exists (in DB or earlier in file) with a different meaning. */
   duplicateCandidate: boolean;
@@ -63,15 +64,15 @@ export async function analyzeImport(rows: string[][], mapping: ImportMapping, fi
       .join('\n');
     const normalized = normalizeKey(english);
     const sourceKey = sourceKeyFor(english, meaning);
-    const row: AnalyzedRow = { rowIndex: i, cells, english, meaning, notes, normalized, sourceKey, status: 'new', duplicateCandidate: false };
+    const row: AnalyzedRow = { rowIndex: i, cells, english, meaning, notes, normalized, sourceKey, status: 'new', duplicateCandidate: false, lang: latinRatio(english) < 0.5 ? 'ja' : 'en' };
 
     if (!english || !normalized) {
       row.status = 'failed';
       row.reason = cells.every((c) => !c.trim()) ? '空行' : '英語表現が空欄';
-    } else if (latinRatio(english) < 0.5) {
+    } else if (/^reminDOは勉強したこと/.test(english)) {
       row.status = 'failed';
-      row.reason = '英語表現ではありません（日本語が中心）';
-    } else if (english.length > 400) {
+      row.reason = 'reminDOアプリの説明文（学習データではありません）';
+    } else if (english.length > (row.lang === 'ja' ? 1000 : 400)) {
       row.status = 'failed';
       row.reason = '英語表現が長すぎます（400文字超）';
     } else if (existingKeys.has(sourceKey)) {
@@ -104,6 +105,7 @@ export async function analyzeImport(rows: string[][], mapping: ImportMapping, fi
     exactDuplicateRows: out.filter((r) => r.status === 'exact_duplicate').length,
     missingMeaning: newRows.filter((r) => !r.meaning).length,
     duplicateCandidates: newRows.filter((r) => r.duplicateCandidate).length,
+    japaneseTerms: newRows.filter((r) => r.lang === 'ja').length,
     failures: out.filter((r) => r.status === 'failed').map((r) => ({ rowIndex: r.rowIndex, reason: r.reason! })),
   };
   return { rows: out, stats, fileAlreadyImported };
@@ -144,6 +146,7 @@ export async function commitImport(
         meaning: r.meaning,
         notes: r.notes,
         kind: classifyKind(r.english),
+        lang: r.lang,
         examples: [],
         tags: [],
         suspended: false,

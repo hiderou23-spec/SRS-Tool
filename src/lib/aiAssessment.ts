@@ -16,7 +16,7 @@ export interface AiAssessmentFile {
   version: number;
   model?: string;
   generatedAt?: string;
-  items: { key?: string; text: string; category: Category; importance: number; rationale?: string }[];
+  items: { key?: string; text: string; category: Category; importance: number; rationale?: string; meaning?: string }[];
 }
 
 export function validateAiFile(obj: unknown): { ok: true; file: AiAssessmentFile } | { ok: false; error: string } {
@@ -56,6 +56,7 @@ export async function applyAiAssessment(file: AiAssessmentFile): Promise<ApplyRe
           category: it.category,
           importance: Math.max(0, Math.min(100, Math.round(it.importance))),
           rationale: it.rationale,
+          meaning: it.meaning,
           model: file.model,
           generatedAt: file.generatedAt ?? ts,
         },

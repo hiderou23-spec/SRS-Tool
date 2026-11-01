@@ -95,7 +95,7 @@ export function planQueue(input: PlanInput): QueuePlan {
 
     if (c.introducedAt === null || c.state === State.New) {
       if (c.mode === 'recognition') newRecognition.push(c);
-      else if (c.mode === 'production') {
+      else if (c.mode === 'production' && expr.lang !== 'ja') {
         const rec = recognitionById.get(c.expressionId);
         if (rec && rec.state === State.Review && rec.fsrs.stability >= settings.productionUnlockStabilityDays) {
           newProduction.push(c);

@@ -242,7 +242,7 @@ export default function Study() {
   const isProd = card.mode === 'production';
   const examples = expr.examples;
   const mainEx = examples[0];
-  const prompt = expr.productionPrompt || expr.meaning || mainEx?.ja || '（日本語訳が未登録です）';
+  const prompt = expr.productionPrompt || expr.meaning || expr.ai?.meaning || mainEx?.ja || '（日本語訳が未登録です）';
   const isNew = card.introducedAt === null;
 
   return (
@@ -266,7 +266,13 @@ export default function Study() {
         {revealed && (
           <div className="reveal" onClick={(e) => e.stopPropagation()}>
             {isProd ? <div className="expr" style={{ marginTop: 0 }}>{expr.text}</div> : null}
-            {!isProd && (expr.meaning ? <p className="meaning">{expr.meaning}</p> : <p className="meaning muted">日本語訳が未登録です</p>)}
+            {!isProd && (expr.meaning ? <p className="meaning">{expr.meaning}</p> : !expr.ai?.meaning && <p className="meaning muted">日本語訳が未登録です</p>)}
+            {!isProd && expr.ai?.meaning && (
+              <div style={{ marginTop: expr.meaning ? 12 : 0 }}>
+                <p className={expr.meaning ? 'small' : 'meaning'} style={{ whiteSpace: 'pre-line', margin: 0, color: expr.meaning ? 'var(--ink-2)' : undefined }}>{expr.ai.meaning}</p>
+                <span className="chip warn" style={{ marginTop: 6 }}>AI訳・未検証</span>
+              </div>
+            )}
 
             {mainEx && <ExampleBlock ex={mainEx} expr={expr.text} open={pronOpen === mainEx.id} onToggle={() => setPronOpen(pronOpen === mainEx.id ? null : mainEx.id)} />}
 

@@ -83,6 +83,8 @@ export interface AiAssessment {
   category: Category;
   importance: number; // 0-100
   rationale?: string;
+  /** AI-written meaning (Japanese, plus English equivalent for Japanese terms). Unverified. */
+  meaning?: string;
   model?: string;
   generatedAt: string;
 }
@@ -99,6 +101,8 @@ export interface Expression {
   productionPrompt?: string;
   notes: string;
   kind: 'word' | 'phrase' | 'sentence';
+  /** Language of `text`. 'ja' = a Japanese term the user wants to memorise (Reading only). */
+  lang?: 'en' | 'ja';
   /** User-set category; overrides AI category when present. */
   category?: Category;
   /** User-set importance 0-100; overrides AI importance when present. */
@@ -221,6 +225,8 @@ export interface ImportStats {
   /** Rows identical (same English + same meaning) to an earlier row in the same file. */
   exactDuplicateRows: number;
   missingMeaning: number;
+  /** Rows whose front is Japanese (imported as Japanese terms). */
+  japaneseTerms?: number;
   duplicateCandidates: number;
   failures: { rowIndex: number; reason: string }[];
 }

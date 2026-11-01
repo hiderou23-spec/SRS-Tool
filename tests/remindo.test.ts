@@ -47,7 +47,9 @@ describe('reminDO format', () => {
     expect(by('vociferate').meaning).toContain('"Shut up," vociferated the old man.');
     expect(by('inadvertently')).toBeTruthy();
     const failed = analysis.rows.filter((r) => r.status === 'failed').map((r) => r.reason);
-    expect(failed).toEqual(['英語表現ではありません（日本語が中心）', '英語表現ではありません（日本語が中心）']);
+    expect(failed).toEqual(['reminDOアプリの説明文（学習データではありません）']);
+    expect(by('ペルー').lang).toBe('ja');
+    expect(analysis.stats.japaneseTerms).toBe(1);
     expect(analysis.stats.duplicateCandidates).toBe(2); // Hammer out ×2 (empty vs filled meaning)
   });
 
@@ -60,11 +62,15 @@ describe('reminDO format', () => {
       { key: 'hammer out', text: 'Hammer out', category: 'phrasal_verb', importance: 95 },
       { key: 'word1', text: 'word1', category: 'low_priority', importance: 5 },
       { key: 'nonexistent', text: 'x', category: 'daily', importance: 50 },
+      { key: 'ペルー', text: 'ペルー', category: 'daily', importance: 99, meaning: '南米の国\nEnglish: Peru' },
     ] };
     const v = validateAiFile(file);
     expect(v.ok).toBe(true);
     const r = await applyAiAssessment((v as { ok: true; file: never }).file);
-    expect(r).toEqual({ items: 3, matchedExpressions: 3, unmatchedItems: 1, userOverridesKept: 1 });
+    expect(r).toEqual({ items: 4, matchedExpressions: 4, unmatchedItems: 1, userOverridesKept: 1 });
+    const peru = (await db.expressions.toArray()).find((x) => x.normalized === 'ペルー')!;
+    expect(peru.ai!.meaning).toContain('Peru');
+    expect(peru.meaning).toBe(''); // AI meaning never overwrites the user's field
     const after = await db.expressions.get(e.id);
     expect(after!.importance).toBe(10); // user value kept
     expect(after!.ai!.importance).toBe(5);
@@ -78,7 +84,11 @@ describe('reminDO format', () => {
       settings: { ...DEFAULT_SETTINGS, newPerDay: 2 }, now: new Date(), introducedToday: 0,
     });
     const firstExpr = await db.expressions.get(plan.queue[0].split(':')[0]);
-    expect(firstExpr!.normalized).toBe('hammer out');
+    expect(firstExpr!.normalized).toBe('ペルー'); // importance 99
+    // Japanese terms never get a Speaking card in the queue
+    const unlocked = (await db.cards.toArray()).map((c) => c.id === `${peru.id}:recognition` ? { ...c, introducedAt: '2025-01-01', state: 2, fsrs: { ...c.fsrs, state: 2, stability: 30, last_review: '2025-01-01T00:00:00Z' } } : c);
+    const plan2 = planQueue({ cards: unlocked, expressions: new Map((await db.expressions.toArray()).map((x) => [x.id, x])), settings: { ...DEFAULT_SETTINGS, newPerDay: 50 }, now: new Date(), introducedToday: 0, minutes: 30 });
+    expect(plan2.queue).not.toContain(`${peru.id}:production`);
   });
 });
 

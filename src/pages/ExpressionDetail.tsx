@@ -158,9 +158,18 @@ export default function ExpressionDetail({ id }: { id: string }) {
         <Field label="英語表現">
           <input className="input" style={{ fontFamily: 'var(--serif)', fontSize: 20 }} value={draft.text} onChange={(e) => set({ text: e.target.value })} autoCapitalize="off" autoCorrect="off" spellCheck={false} autoFocus={isNewParam} />
         </Field>
-        <Field label="日本語の意味">
+        <Field label={draft.lang === 'ja' ? '意味・読み・英語での言い方' : '日本語の意味'}>
           <textarea className="textarea" value={draft.meaning} onChange={(e) => set({ meaning: e.target.value })} />
         </Field>
+        {draft.ai?.meaning && (
+          <div className="notice info" style={{ marginTop: -6 }}>
+            <div className="row between" style={{ marginBottom: 4 }}><b className="small">AI訳</b><span className="chip warn">未検証</span></div>
+            <div className="small" style={{ whiteSpace: 'pre-line' }}>{draft.ai.meaning}</div>
+            <div className="row" style={{ marginTop: 8, gap: 6 }}>
+              <button className="btn sm" onClick={() => set({ meaning: draft.meaning ? `${draft.meaning}\n${draft.ai!.meaning}` : draft.ai!.meaning! })}>{draft.meaning ? '意味に追記' : 'この訳を採用'}</button>
+            </div>
+          </div>
+        )}
         <Field label="Speaking用の状況説明（任意・空なら意味を表示）">
           <input className="input" placeholder="例: 会議で、詳細を詰めようと提案する" value={draft.productionPrompt ?? ''} onChange={(e) => set({ productionPrompt: e.target.value || undefined })} />
         </Field>
@@ -231,7 +240,7 @@ export default function ExpressionDetail({ id }: { id: string }) {
             <div key={c.id} style={{ marginBottom: 12 }}>
               <div className="row between"><b>{c.mode === 'recognition' ? 'Reading' : 'Speaking'}</b><span className="chip">{STATE_LABEL[c.state]}</span></div>
               {c.state === State.New ? (
-                <div className="small muted">{c.mode === 'production' ? `Readingが安定（${settings.productionUnlockStabilityDays}日以上）すると出題されます` : 'まだ学習していません'}</div>
+                <div className="small muted">{c.mode === 'production' && draft.lang === 'ja' ? '日本語の用語のためSpeakingは出題しません' : c.mode === 'production' ? `Readingが安定（${settings.productionUnlockStabilityDays}日以上）すると出題されます` : 'まだ学習していません'}</div>
               ) : (
                 <div className="small muted">
                   次回: {new Date(c.due).toLocaleDateString('ja-JP')}（間隔 {formatInterval(c.fsrs.scheduled_days)}）・安定度 {formatInterval(c.fsrs.stability)}・難易度 {c.fsrs.difficulty.toFixed(1)}/10・復習 {c.fsrs.reps}回・失念 {c.fsrs.lapses}回{r != null ? `・現在の想起確率 ${(r * 100).toFixed(0)}%` : ''}

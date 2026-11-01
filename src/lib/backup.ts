@@ -112,6 +112,8 @@ export async function buildCsv(): Promise<string> {
     return {
       english: e.text,
       japanese: e.meaning,
+      ai_meaning: e.ai?.meaning ?? '',
+      lang: e.lang ?? 'en',
       notes: e.notes,
       category: e.category ?? e.ai?.category ?? '',
       importance: effectiveImportance(e),

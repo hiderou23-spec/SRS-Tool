@@ -9,7 +9,7 @@ import { navigate } from '../lib/router';
 import { makeCards } from '../import/importer';
 import { nowIso, uid } from '../lib/util';
 
-type Filter = 'all' | 'new' | 'learning' | 'established' | 'nomeaning' | 'suspended' | 'aiunverified';
+type Filter = 'all' | 'japanese' | 'new' | 'learning' | 'established' | 'nomeaning' | 'suspended' | 'aiunverified';
 const FILTERS: { k: Filter; label: string }[] = [
   { k: 'all', label: 'すべて' },
   { k: 'new', label: '未学習' },
@@ -17,6 +17,7 @@ const FILTERS: { k: Filter; label: string }[] = [
   { k: 'established', label: '定着' },
   { k: 'nomeaning', label: '訳なし' },
   { k: 'aiunverified', label: 'AI未検証' },
+  { k: 'japanese', label: '日本語の用語' },
   { k: 'suspended', label: '除外中' },
 ];
 
@@ -54,8 +55,9 @@ export default function Library() {
         case 'learning': return !e.suspended && stage(rec) === 'learning';
         case 'established': return stage(rec) === 'established';
         case 'nomeaning': return !e.meaning;
+        case 'japanese': return e.lang === 'ja' && !e.suspended;
         case 'suspended': return e.suspended;
-        case 'aiunverified': return e.examples.some((x) => x.origin === 'ai' && x.status !== 'verified') || e.examples.some((x) => x.pronunciation && x.pronunciation.status !== 'verified');
+        case 'aiunverified': return (!!e.ai?.meaning && !e.meaning) || e.examples.some((x) => x.origin === 'ai' && x.status !== 'verified') || e.examples.some((x) => x.pronunciation && x.pronunciation.status !== 'verified');
         default: return !e.suspended;
       }
     });
@@ -117,7 +119,7 @@ export default function Library() {
               <a key={e.id} className="list-item lib-item" href={`#/library/${e.id}`}>
                 <div className="grow">
                   <div className="t" style={{ opacity: e.suspended ? 0.45 : 1 }}>{e.text || <span className="muted">（未入力）</span>}</div>
-                  <div className="m">{e.meaning || '— 訳なし —'}</div>
+                  <div className="m">{e.meaning || (e.ai?.meaning ? `AI訳: ${e.ai.meaning}` : '— 訳なし —')}</div>
                 </div>
                 <div className="row" style={{ gap: 4 }} title="Reading / Speaking">
                   <span className={'dot ' + (sr === 'established' ? 'on' : sr === 'learning' ? 'half' : '')} />

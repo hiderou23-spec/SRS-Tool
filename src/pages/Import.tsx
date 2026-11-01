@@ -245,6 +245,7 @@ function StatsTable({ stats, preview }: { stats: ImportAnalysis['stats']; previe
     [preview ? '取り込み予定' : '取り込み成功', stats.imported, 'accent'],
     ['取り込み失敗（空欄など）', stats.failed],
     ['日本語訳が不足', stats.missingMeaning],
+    ['日本語の用語（Readingのみで学習）', stats.japaneseTerms ?? 0],
     ['重複候補（要確認・自動削除しません）', stats.duplicateCandidates],
     ['取り込み済みのためスキップ', stats.skippedAlreadyImported],
     ['ファイル内の完全一致行（スキップ・元データは保持）', stats.exactDuplicateRows],
