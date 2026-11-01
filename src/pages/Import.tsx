@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ImportMapping } from '../db/types';
-import { decodeBytes, detectDelimiter, guessColumns, parseRows } from '../import/parse';
+import { decodeBytes, detectDelimiter, detectUnquoted, guessColumns, parseRows } from '../import/parse';
 import { analyzeImport, commitImport, fileHashOf, type ImportAnalysis } from '../import/importer';
 import { navigate } from '../lib/router';
 import { IconBack } from '../components/Icons';
@@ -37,7 +37,8 @@ export default function ImportPage() {
       const bytes = new Uint8Array(await f.arrayBuffer());
       const decoded = encodingOverride ? { text: new TextDecoder(encodingOverride).decode(bytes).replace(/^﻿/, ''), encoding: encodingOverride } : decodeBytes(bytes);
       const delimiter = delimiterOverride ?? detectDelimiter(decoded.text);
-      const rows = parseRows(decoded.text, delimiter);
+      const quotes = !detectUnquoted(decoded.text, delimiter);
+      const rows = parseRows(decoded.text, delimiter, quotes);
       if (rows.length === 0) throw new Error('データ行が見つかりません');
       const g = guessColumns(rows);
       setFile({ name: f.name, bytes, hash: await fileHashOf(bytes), text: decoded.text, rows, columnCount: g.columnCount });
@@ -47,7 +48,9 @@ export default function ImportPage() {
         encoding: decoded.encoding,
         englishCol: g.englishCol,
         japaneseCol: g.japaneseCol,
-        notesCols: Array.from({ length: g.columnCount }, (_, i) => i).filter((i) => i !== g.englishCol && i !== g.japaneseCol),
+        notesCols: g.unquotedCommas ? [] : Array.from({ length: g.columnCount }, (_, i) => i).filter((i) => i !== g.englishCol && i !== g.japaneseCol),
+        joinRestIntoMeaning: g.unquotedCommas || !quotes,
+        quotes,
       });
     } catch (e) {
       setError(`ファイルを読み込めませんでした: ${(e as Error).message}`);
@@ -59,9 +62,9 @@ export default function ImportPage() {
     const next = { ...mapping, ...patch };
     let rows = file.rows;
     let columnCount = file.columnCount;
-    if (patch.delimiter !== undefined || patch.encoding !== undefined) {
+    if (patch.delimiter !== undefined || patch.encoding !== undefined || patch.quotes !== undefined) {
       const text = patch.encoding !== undefined ? new TextDecoder(next.encoding.replace(/ .*/, '')).decode(file.bytes).replace(/^﻿/, '') : file.text;
-      rows = parseRows(text, next.delimiter);
+      rows = parseRows(text, next.delimiter, next.quotes !== false);
       columnCount = Math.max(0, ...rows.slice(0, 200).map((r) => r.length));
       setFile({ ...file, text, rows, columnCount });
     }
@@ -161,13 +164,21 @@ export default function ImportPage() {
             </label>
             <div className="field"><span>メモとして取り込む列</span>
               <div className="row wrap" style={{ gap: 6 }}>
-                {Array.from({ length: file.columnCount }, (_, i) => i).filter((i) => i !== mapping.englishCol && i !== mapping.japaneseCol).map((i) => {
+                {Array.from({ length: file.columnCount }, (_, i) => i).filter((i) => i !== mapping.englishCol && i !== mapping.japaneseCol && !(mapping.joinRestIntoMeaning && i > mapping.japaneseCol)).map((i) => {
                   const on = mapping.notesCols.includes(i);
                   return <button key={i} className={'chip' + (on ? ' accent' : '')} style={{ border: 0, padding: '6px 11px', fontSize: 13 }} onClick={() => reparse({ notesCols: on ? mapping.notesCols.filter((x) => x !== i) : [...mapping.notesCols, i] })}>{colName(i)}</button>;
                 })}
                 {file.columnCount <= 2 && <span className="small muted">（他の列はありません）</span>}
               </div>
             </div>
+            <label className="row between" style={{ marginBottom: 14 }}>
+              <span className="grow">日本語訳の列より右をすべて訳として結合<br /><span className="tiny muted">reminDOはカンマを含む訳を引用符で囲まずに書き出すため、訳が複数列に分かれます</span></span>
+              <span className="toggle"><input type="checkbox" checked={!!mapping.joinRestIntoMeaning} onChange={(e) => reparse({ joinRestIntoMeaning: e.target.checked })} /><span /></span>
+            </label>
+            <label className="row between" style={{ marginBottom: 14 }}>
+              <span className="grow">1行＝1件として読む（引用符を無視）<br /><span className="tiny muted">reminDO形式。自動判定済み</span></span>
+              <span className="toggle"><input type="checkbox" checked={mapping.quotes === false} onChange={(e) => reparse({ quotes: !e.target.checked })} /><span /></span>
+            </label>
             <label className="row between" style={{ marginBottom: 14 }}>
               <span>1行目は見出し</span>
               <span className="toggle"><input type="checkbox" checked={mapping.hasHeader} onChange={(e) => reparse({ hasHeader: e.target.checked })} /><span /></span>

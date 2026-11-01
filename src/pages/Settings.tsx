@@ -5,6 +5,7 @@ import type { Settings } from '../db/types';
 import { exportBackupJson, exportCsv, restoreBackup, validateBackup, type BackupFile } from '../lib/backup';
 import { useSettings, toast } from '../lib/hooks';
 import { addSampleDeck } from '../lib/sample';
+import { applyAiAssessment, validateAiFile } from '../lib/aiAssessment';
 import { IconRight } from '../components/Icons';
 
 function Toggle({ label, desc, checked, onChange }: { label: string; desc?: string; checked: boolean; onChange: (v: boolean) => void }) {
@@ -68,6 +69,21 @@ export default function SettingsPage() {
     }
   };
 
+  const onAiFile = async (f: File) => {
+    try {
+      const v = validateAiFile(JSON.parse(await f.text()));
+      if (!v.ok) {
+        toast(v.error);
+        return;
+      }
+      const r = await applyAiAssessment(v.file);
+      toast(`AI分類を${r.matchedExpressions.toLocaleString()}件に反映しました`);
+      alert(`AI分類の反映結果\n\n分類データ: ${r.items.toLocaleString()}件\n反映した表現: ${r.matchedExpressions.toLocaleString()}件\n一致する表現がなかった分類: ${r.unmatchedItems.toLocaleString()}件\n手動設定を優先した表現: ${r.userOverridesKept.toLocaleString()}件\n\nAI判定は元データ・手動設定とは別に保存されています。各表現の編集画面で修正できます。`);
+    } catch {
+      toast('ファイルを読み込めませんでした');
+    }
+  };
+
   const wipe = async () => {
     if (!confirm('すべての学習データを削除します。先にJSONバックアップを取りましたか？')) return;
     if (prompt('確認のため「削除」と入力してください') !== '削除') return;
@@ -127,6 +143,10 @@ export default function SettingsPage() {
       <div className="list">
         <Link href="#/import" label="CSV / テキストを取り込む（reminDO）" />
         <Link href="#/duplicates" label="重複候補を確認" badge={pendingDup} />
+        <label className="list-item">
+          <span className="grow">AI分類ファイルを読み込む（カテゴリー・重要度）</span>
+          <input type="file" accept="application/json,.json" style={{ display: 'none' }} onChange={(e) => { if (e.target.files?.[0]) void onAiFile(e.target.files[0]); e.target.value = ''; }} />
+        </label>
         <Link href="#/backlog" label="復習の状況（遅延の確認）" />
       </div>
 
@@ -159,7 +179,7 @@ export default function SettingsPage() {
       <div className="section-title">機能の実装状況</div>
       <div className="card small">
         <p style={{ marginTop: 0 }}><b>実装済み（Phase 1）</b><br />CSV/テキスト取り込み（重複候補・再取り込み対策・元データ保持）／検索・編集／Reading・Speakingモード／FSRS（ts-fsrs）による復習管理／学習時間制限と優先順位付け／学習履歴・取り消し／JSONバックアップ・復元／CSV書き出し／オフライン対応PWA／例文・発音ガイドの手動編集と表示</p>
-        <p><b>未実装（Phase 2）</b><br />AIによる重要度分類／3例文の自動生成／Slurred Pronunciation・カタカナ・IPAの自動生成（現在はサンプル4件のみ、すべて「要確認」）</p>
+        <p><b>Phase 2（一部）</b><br />AI分類ファイルの読み込み（カテゴリー・重要度、元データと別保存）は実装済み。アプリ内でのAI分類実行は未実装<br /><b>未実装（Phase 2）</b><br />3例文の自動生成／Slurred Pronunciation・カタカナ・IPAの自動生成（現在はサンプル4件のみ、すべて「要確認」）</p>
         <p style={{ marginBottom: 0 }}><b>未実装（Phase 3）</b><br />音声／Listening SRS／シャドーイング／AI会議シミュレーション／クラウド同期</p>
       </div>
 

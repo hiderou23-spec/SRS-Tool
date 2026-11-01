@@ -204,6 +204,13 @@ export interface ImportMapping {
   englishCol: number;
   japaneseCol: number;
   notesCols: number[];
+  /**
+   * Join every cell from japaneseCol to the end back together with commas.
+   * reminDO exports do not quote fields, so commas inside the answer split it.
+   */
+  joinRestIntoMeaning?: boolean;
+  /** false = no CSV quoting; one line = one record. */
+  quotes?: boolean;
 }
 
 export interface ImportStats {

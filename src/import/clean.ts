@@ -69,6 +69,12 @@ export function normalizeKey(english: string): string {
   return s;
 }
 
+/** Some apps export "Definition of: 'word' is: 'http://…'" — keep just the word. */
+export function extractEnglishTerm(s: string): string {
+  const m = /^Definition of:\s*'([^']+)'\s*is:/i.exec(s);
+  return m ? m[1] : s;
+}
+
 export function classifyKind(english: string): 'word' | 'phrase' | 'sentence' {
   const words = english.split(/\s+/).filter(Boolean);
   if (words.length <= 1) return 'word';

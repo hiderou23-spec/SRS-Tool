@@ -3,3 +3,5 @@ dist
 dev-dist
 *.local
 test-results
+tests/local-*
+*.tsbuildinfo

@@ -56,7 +56,7 @@ export default function Library() {
         case 'nomeaning': return !e.meaning;
         case 'suspended': return e.suspended;
         case 'aiunverified': return e.examples.some((x) => x.origin === 'ai' && x.status !== 'verified') || e.examples.some((x) => x.pronunciation && x.pronunciation.status !== 'verified');
-        default: return true;
+        default: return !e.suspended;
       }
     });
     const cmp: Record<typeof sort, (a: Expression, b: Expression) => number> = {

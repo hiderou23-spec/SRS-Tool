@@ -10,7 +10,7 @@ import type {
 } from '../db/types';
 import { hash64, nowIso, uid } from '../lib/util';
 import { newCardData } from '../srs/scheduler';
-import { classifyKind, cleanEnglish, cleanText, normalizeKey } from './clean';
+import { classifyKind, cleanEnglish, cleanText, extractEnglishTerm, latinRatio, normalizeKey } from './clean';
 
 export interface AnalyzedRow {
   rowIndex: number;
@@ -53,10 +53,11 @@ export async function analyzeImport(rows: string[][], mapping: ImportMapping, fi
 
   for (let i = start; i < rows.length; i++) {
     const cells = rows[i];
-    const english = cleanEnglish(cells[mapping.englishCol]);
-    const meaning = mapping.japaneseCol >= 0 ? cleanText(cells[mapping.japaneseCol]) : '';
+    const english = extractEnglishTerm(cleanEnglish(cells[mapping.englishCol]));
+    const meaningRaw = mapping.japaneseCol < 0 ? '' : mapping.joinRestIntoMeaning ? cells.slice(mapping.japaneseCol).join(',') : cells[mapping.japaneseCol];
+    const meaning = cleanText(meaningRaw).replace(/,+$/, '').trim();
     const notes = mapping.notesCols
-      .filter((c) => c !== mapping.englishCol && c !== mapping.japaneseCol)
+      .filter((c) => c !== mapping.englishCol && c !== mapping.japaneseCol && !(mapping.joinRestIntoMeaning && c > mapping.japaneseCol))
       .map((c) => cleanText(cells[c]))
       .filter(Boolean)
       .join('\n');
@@ -67,6 +68,9 @@ export async function analyzeImport(rows: string[][], mapping: ImportMapping, fi
     if (!english || !normalized) {
       row.status = 'failed';
       row.reason = cells.every((c) => !c.trim()) ? '空行' : '英語表現が空欄';
+    } else if (latinRatio(english) < 0.5) {
+      row.status = 'failed';
+      row.reason = '英語表現ではありません（日本語が中心）';
     } else if (english.length > 400) {
       row.status = 'failed';
       row.reason = '英語表現が長すぎます（400文字超）';

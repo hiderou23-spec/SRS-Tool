@@ -43,9 +43,32 @@ export function detectDelimiter(text: string): string {
   return best;
 }
 
-export function parseRows(text: string, delimiter: string): string[][] {
+/**
+ * @param quotes false = treat `"` as ordinary text and one line as one record
+ *   (reminDO exports never quote fields, so literal quotes would otherwise
+ *   swallow following lines).
+ */
+export function parseRows(text: string, delimiter: string, quotes = true): string[][] {
+  if (!quotes) {
+    return text
+      .split(/\r?\n/)
+      .filter((l) => l.trim() !== '')
+      .map((l) => l.split(delimiter));
+  }
   const res = Papa.parse<string[]>(text, { delimiter, skipEmptyLines: 'greedy' });
   return res.data.map((r) => r.map((c) => (c ?? '').toString()));
+}
+
+/**
+ * Detect files that use no CSV quoting: quoted parsing produces noticeably
+ * fewer records than there are lines, while every line contains the delimiter.
+ */
+export function detectUnquoted(text: string, delimiter: string): boolean {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim() !== '');
+  if (lines.length < 20) return false;
+  const withDelim = lines.filter((l) => l.includes(delimiter)).length / lines.length;
+  const quoted = parseRows(text, delimiter, true).length;
+  return withDelim > 0.97 && quoted < lines.length * 0.98;
 }
 
 export interface ColumnGuess {
@@ -53,6 +76,8 @@ export interface ColumnGuess {
   japaneseCol: number;
   hasHeader: boolean;
   columnCount: number;
+  /** Most rows have 2 cells but some have more → unquoted commas in the answer. */
+  unquotedCommas: boolean;
 }
 
 const HEADER_WORDS = /^(question|answer|front|back|english|japanese|word|meaning|英語|日本語|問題|答え|解答|表|裏|単語|意味|メモ|備考|note|notes|ヒント)$/i;
@@ -82,5 +107,9 @@ export function guessColumns(rows: string[][]): ColumnGuess {
   if (japaneseCol < 0) japaneseCol = columnCount > 1 ? (englishCol === 0 ? 1 : 0) : -1;
   const first = rows[0] ?? [];
   const hasHeader = first.length > 0 && first.some((c) => HEADER_WORDS.test(c.trim()));
-  return { englishCol, japaneseCol, hasHeader, columnCount };
+  const lens = rows.map((r) => r.length);
+  const two = lens.filter((n) => n === 2).length;
+  const more = lens.filter((n) => n > 2).length;
+  const unquotedCommas = englishCol === 0 && japaneseCol === 1 && two / Math.max(1, rows.length) > 0.6 && more > 0;
+  return { englishCol, japaneseCol, hasHeader, columnCount, unquotedCommas };
 }

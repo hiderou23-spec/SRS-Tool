@@ -1,14 +1,16 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { db } from '../db/db';
-import type { DuplicateGroup, Expression } from '../db/types';
+import type { DuplicateGroup } from '../db/types';
 import { nowIso } from '../lib/util';
+import { mergeAllPending, mergeGroup } from '../lib/duplicates';
 import { toast } from '../lib/hooks';
 import { navigate } from '../lib/router';
 import { IconBack } from '../components/Icons';
 
 export default function Duplicates() {
   const [showResolved, setShowResolved] = useState(false);
+  const [busy, setBusy] = useState(false);
   const data = useLiveQuery(async () => {
     const groups = await db.duplicates.toArray();
     const ids = groups.flatMap((g) => g.expressionIds);
@@ -24,28 +26,20 @@ export default function Duplicates() {
     await db.duplicates.update(g.id, { resolution: 'keep_all', updatedAt: nowIso() });
   };
 
-  /** Non-destructive merge: primary gets combined meaning/notes; others are suspended (kept with history). */
   const merge = async (g: DuplicateGroup, primaryId: string) => {
-    const members = g.expressionIds.map((id) => data.exprs.get(id)).filter(Boolean) as Expression[];
-    const primary = members.find((m) => m.id === primaryId)!;
-    const others = members.filter((m) => m.id !== primaryId);
-    const meanings = [primary.meaning, ...others.map((o) => o.meaning)].filter(Boolean);
-    const uniqueMeanings = [...new Set(meanings)];
-    const notes = [primary.notes, ...others.map((o) => o.notes)].filter(Boolean);
-    const ts = nowIso();
-    await db.transaction('rw', db.expressions, db.duplicates, async () => {
-      await db.expressions.update(primaryId, {
-        meaning: uniqueMeanings.join('\n'),
-        notes: [...new Set(notes)].join('\n'),
-        examples: [...primary.examples, ...others.flatMap((o) => o.examples)].slice(0, 3),
-        updatedAt: ts,
-      });
-      for (const o of others) {
-        await db.expressions.update(o.id, { suspended: true, tags: [...new Set([...o.tags, 'merged'])], notes: [o.notes, `（${primary.text} に統合済み）`].filter(Boolean).join('\n'), updatedAt: ts });
-      }
-      await db.duplicates.update(g.id, { resolution: 'merged', updatedAt: ts });
-    });
+    await mergeGroup(g, primaryId);
     toast('統合しました（他の表現は除外状態で保持しています）');
+  };
+
+  const mergeAll = async () => {
+    if (!confirm(`未対応の重複候補 ${pending.length}グループを一括で統合します。\n\n・意味・メモ・例文は1つにまとめます\n・残りは削除せず「除外中」として保持します（元データ・学習履歴もそのまま）\n・後から個別に「未対応に戻す」ことはできますが、まとめた意味は手で直す必要があります\n\n先にJSONバックアップを取ることをおすすめします。続けますか？`)) return;
+    setBusy(true);
+    try {
+      const n = await mergeAllPending();
+      toast(`${n}グループを統合しました`);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -59,6 +53,12 @@ export default function Duplicates() {
         <span className="small">対応済みも表示</span>
         <span className="toggle"><input type="checkbox" checked={showResolved} onChange={(e) => setShowResolved(e.target.checked)} /><span /></span>
       </label>
+      {pending.length > 0 && (
+        <div className="card stack">
+          <p className="small" style={{ margin: 0 }}>未対応 {pending.length}グループ。1つずつ選ぶか、まとめて統合できます（学習済み → 訳あり → 新しく登録した方を残します）。</p>
+          <button className="btn primary block" disabled={busy} onClick={mergeAll}>{busy ? '統合中…' : 'すべて一括で統合（削除はしません）'}</button>
+        </div>
+      )}
       {list.length === 0 && <p className="muted center">確認が必要な重複候補はありません。</p>}
       {list.map((g) => (
         <div key={g.id} className="card">
