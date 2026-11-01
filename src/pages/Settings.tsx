@@ -78,7 +78,7 @@ export default function SettingsPage() {
       }
       const r = await applyAiAssessment(v.file);
       toast(`AI分類を${r.matchedExpressions.toLocaleString()}件に反映しました`);
-      alert(`AI分類の反映結果\n\n分類データ: ${r.items.toLocaleString()}件\n反映した表現: ${r.matchedExpressions.toLocaleString()}件\n一致する表現がなかった分類: ${r.unmatchedItems.toLocaleString()}件\n手動設定を優先した表現: ${r.userOverridesKept.toLocaleString()}件\n例文を追加した表現: ${r.examplesAdded.toLocaleString()}件\n\nAI判定は元データ・手動設定とは別に保存されています。各表現の編集画面で修正できます。`);
+      alert(`AI分類の反映結果\n\n分類データ: ${r.items.toLocaleString()}件\n反映した表現: ${r.matchedExpressions.toLocaleString()}件\n一致する表現がなかった分類: ${r.unmatchedItems.toLocaleString()}件\n手動設定を優先した表現: ${r.userOverridesKept.toLocaleString()}件\n例文を追加した表現: ${r.examplesAdded.toLocaleString()}件\n発音ガイドを追加した例文: ${r.pronunciationsAdded.toLocaleString()}件\n\nAI判定は元データ・手動設定とは別に保存されています。各表現の編集画面で修正できます。`);
     } catch {
       toast('ファイルを読み込めませんでした');
     }

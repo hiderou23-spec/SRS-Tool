@@ -67,11 +67,19 @@ describe('reminDO format', () => {
     const v = validateAiFile(file);
     expect(v.ok).toBe(true);
     const r = await applyAiAssessment((v as { ok: true; file: never }).file);
-    expect(r).toEqual({ items: 4, matchedExpressions: 4, unmatchedItems: 1, userOverridesKept: 1, examplesAdded: 2 });
+    expect(r).toEqual({ items: 4, matchedExpressions: 4, unmatchedItems: 1, userOverridesKept: 1, examplesAdded: 2, pronunciationsAdded: 0 });
     const hammers = (await db.expressions.toArray()).filter((x) => x.normalized === 'hammer out');
     expect(hammers[0].examples[0]).toMatchObject({ origin: 'ai', status: 'unverified', kind: 'business' });
     const again = await applyAiAssessment((v as { ok: true; file: never }).file);
     expect(again.examplesAdded).toBe(0); // idempotent: never duplicates or overwrites
+    // A later file can attach a pronunciation guide to an existing example.
+    const withPron = { ...file, items: [{ ...file.items[0], examples: [{ kind: 'business', en: 'We need to hammer out the details.', ja: 'x', pronunciation: { level1: { ipa: '/x/' }, level2: { text: 'We nee-tuh hamme-rout' } } }] }] };
+    const r3 = await applyAiAssessment((validateAiFile(withPron) as { ok: true; file: never }).file);
+    expect(r3.pronunciationsAdded).toBe(2);
+    const h = (await db.expressions.toArray()).find((x) => x.normalized === 'hammer out')!;
+    expect(h.examples[0].pronunciation).toMatchObject({ origin: 'ai', status: 'needs_review', level2: { text: 'We nee-tuh hamme-rout' } });
+    const r4 = await applyAiAssessment((validateAiFile(withPron) as { ok: true; file: never }).file);
+    expect(r4.pronunciationsAdded).toBe(0);
     const peru = (await db.expressions.toArray()).find((x) => x.normalized === 'ペルー')!;
     expect(peru.ai!.meaning).toContain('Peru');
     expect(peru.meaning).toBe(''); // AI meaning never overwrites the user's field
