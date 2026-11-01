@@ -35,6 +35,10 @@ export default function ImportPage() {
     setDone(null);
     try {
       const bytes = new Uint8Array(await f.arrayBuffer());
+      const head = new TextDecoder().decode(bytes.subarray(0, 200)).replace(/^\uFEFF/, '').trimStart();
+      if (/\.json$/i.test(f.name) || head.startsWith('{')) {
+        throw new Error('これはJSONファイルです。AI分類ファイルは Settings →「AI分類ファイルを読み込む」、バックアップは「JSONバックアップから復元」から選んでください');
+      }
       const decoded = encodingOverride ? { text: new TextDecoder(encodingOverride).decode(bytes).replace(/^﻿/, ''), encoding: encodingOverride } : decodeBytes(bytes);
       const delimiter = delimiterOverride ?? detectDelimiter(decoded.text);
       const quotes = !detectUnquoted(decoded.text, delimiter);
@@ -126,7 +130,7 @@ export default function ImportPage() {
       <div className="card stack">
         <label className="btn primary block">
           ファイルを選択
-          <input type="file" accept=".csv,.txt,.tsv,text/csv,text/plain,text/tab-separated-values" style={{ display: 'none' }} onChange={(e) => e.target.files?.[0] && load(e.target.files[0])} />
+          <input type="file" style={{ display: 'none' }} onChange={(e) => e.target.files?.[0] && load(e.target.files[0])} />
         </label>
         <p className="small muted" style={{ margin: 0 }}>元のデータはそのまま保存され、上書き・削除されません。同じファイルを再度取り込んでも、既に取り込んだ行は追加されません。</p>
         {file && <p className="small" style={{ margin: 0 }}>{file.name} · {file.rows.length.toLocaleString()} 行 · {mapping?.encoding}</p>}

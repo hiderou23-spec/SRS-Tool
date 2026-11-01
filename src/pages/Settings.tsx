@@ -47,6 +47,10 @@ export default function SettingsPage() {
   const onRestoreFile = async (f: File) => {
     try {
       const obj = JSON.parse(await f.text());
+      if (obj?.format === 'english-mastery-ai-assessment') {
+        toast('これはAI分類ファイルです。「AI分類ファイルを読み込む」から選んでください');
+        return;
+      }
       const v = validateBackup(obj);
       if (!v.ok) {
         toast(v.error);
@@ -71,7 +75,12 @@ export default function SettingsPage() {
 
   const onAiFile = async (f: File) => {
     try {
-      const v = validateAiFile(JSON.parse(await f.text()));
+      const obj = JSON.parse(await f.text());
+      if (obj?.format === 'english-mastery-backup') {
+        toast('これはバックアップファイルです。「JSONバックアップから復元」から選んでください');
+        return;
+      }
+      const v = validateAiFile(obj);
       if (!v.ok) {
         toast(v.error);
         return;
@@ -145,7 +154,7 @@ export default function SettingsPage() {
         <Link href="#/duplicates" label="重複候補を確認" badge={pendingDup} />
         <label className="list-item">
           <span className="grow">AI分類ファイルを読み込む（カテゴリー・重要度）</span>
-          <input type="file" accept="application/json,.json" style={{ display: 'none' }} onChange={(e) => { if (e.target.files?.[0]) void onAiFile(e.target.files[0]); e.target.value = ''; }} />
+          <input type="file" style={{ display: 'none' }} onChange={(e) => { if (e.target.files?.[0]) void onAiFile(e.target.files[0]); e.target.value = ''; }} />
         </label>
         <Link href="#/backlog" label="復習の状況（遅延の確認）" />
       </div>
@@ -164,7 +173,7 @@ export default function SettingsPage() {
         <button className="btn primary block" onClick={async () => { const r = await exportBackupJson(); if (r !== 'cancelled') toast('バックアップを書き出しました'); }}>JSONバックアップを保存（完全）</button>
         <label className="btn block">
           JSONバックアップから復元
-          <input type="file" accept="application/json,.json" style={{ display: 'none' }} onChange={(e) => { if (e.target.files?.[0]) void onRestoreFile(e.target.files[0]); e.target.value = ''; }} />
+          <input type="file" style={{ display: 'none' }} onChange={(e) => { if (e.target.files?.[0]) void onRestoreFile(e.target.files[0]); e.target.value = ''; }} />
         </label>
         <button className="btn block" onClick={() => exportCsv()}>CSVで書き出す（表現・例文・学習状態）</button>
       </div>
