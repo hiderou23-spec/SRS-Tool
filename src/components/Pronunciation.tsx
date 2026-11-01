@@ -9,7 +9,7 @@ export function QualityChip({ status, origin }: { status: string; origin?: strin
 
 export function PronunciationView({ guide, sentence, settings }: { guide?: PronunciationGuide; sentence: string; settings: Settings }) {
   if (!guide) {
-    return <div className="pron small muted">この例文の発音ガイドはまだありません（Phase 2で生成予定・手動入力は編集画面から可能）。</div>;
+    return <div className="pron small muted">この例文の発音ガイドはまだありません。編集画面から AI で生成するか、手動で入力できます。</div>;
   }
   const levels = [
     { lv: 'Level 1 · 通常の発音', d: { ...guide.level1, text: guide.level1.text ?? sentence } },

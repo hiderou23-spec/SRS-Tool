@@ -6,6 +6,7 @@ import { exportBackupJson, exportCsv, restoreBackup, validateBackup, type Backup
 import { useSettings, toast } from '../lib/hooks';
 import { addSampleDeck } from '../lib/sample';
 import { applyAiAssessment, validateAiFile } from '../lib/aiAssessment';
+import AiPanel from '../components/AiPanel';
 import { IconRight } from '../components/Icons';
 
 function Toggle({ label, desc, checked, onChange }: { label: string; desc?: string; checked: boolean; onChange: (v: boolean) => void }) {
@@ -148,6 +149,12 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      <div className="section-title">AI 生成</div>
+      <AiPanel />
+      <div className="list">
+        <Link href="#/review" label="AI生成コンテンツの確認" />
+      </div>
+
       <div className="section-title">データ</div>
       <div className="list">
         <Link href="#/import" label="CSV / テキストを取り込む（reminDO）" />
@@ -188,7 +195,7 @@ export default function SettingsPage() {
       <div className="section-title">機能の実装状況</div>
       <div className="card small">
         <p style={{ marginTop: 0 }}><b>実装済み（Phase 1）</b><br />CSV/テキスト取り込み（重複候補・再取り込み対策・元データ保持）／検索・編集／Reading・Speakingモード／FSRS（ts-fsrs）による復習管理／学習時間制限と優先順位付け／学習履歴・取り消し／JSONバックアップ・復元／CSV書き出し／オフライン対応PWA／例文・発音ガイドの手動編集と表示</p>
-        <p><b>Phase 2（一部）</b><br />AI分類ファイルの読み込み（カテゴリー・重要度、元データと別保存）は実装済み。アプリ内でのAI分類実行は未実装<br /><b>未実装（Phase 2）</b><br />3例文の自動生成／Slurred Pronunciation・カタカナ・IPAの自動生成（現在はサンプル4件のみ、すべて「要確認」）</p>
+        <p><b>実装済み（Phase 2）</b><br />AIデータファイルの読み込み（分類・重要度・AI訳・例文・発音ガイド）／自分の API キーによるアプリ内生成（3例文・日本語訳・Slurred Pronunciation・カタカナ・IPA）／AI生成コンテンツの確認画面／学習分析の強化。AI生成物はすべて元データと別に「要確認」として保存</p>
         <p style={{ marginBottom: 0 }}><b>未実装（Phase 3）</b><br />音声／Listening SRS／シャドーイング／AI会議シミュレーション／クラウド同期</p>
       </div>
 

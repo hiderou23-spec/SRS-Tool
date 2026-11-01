@@ -11,6 +11,8 @@ import { useSettings, toast } from '../lib/hooks';
 import { hashParams, navigate } from '../lib/router';
 import { IconBack } from '../components/Icons';
 import { QualityChip } from '../components/Pronunciation';
+import { friendlyError, getApiKey, type GenerateUsage } from '../lib/aiConfig';
+import { recordUsage } from '../components/AiPanel';
 
 const STATE_LABEL = ['未学習', '学習中', '復習', '再学習'];
 const KINDS: { k: ExampleKind; label: string }[] = [
@@ -82,6 +84,7 @@ export default function ExpressionDetail({ id }: { id: string }) {
   }, [id]);
   const [draft, setDraft] = useState<Expression | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [aiBusy, setAiBusy] = useState<string | null>(null);
   const isNewParam = hashParams().get('new') === '1';
 
   useEffect(() => {
@@ -142,6 +145,27 @@ export default function ExpressionDetail({ id }: { id: string }) {
     await db.expressions.update(id, { usedInRealLife });
     if (draft) setDraft({ ...draft, usedInRealLife });
     toast('記録しました。素晴らしい！');
+  };
+
+  const runAi = async (label: string, fn: () => Promise<GenerateUsage>) => {
+    if (!getApiKey()) {
+      toast('Settings → AI 生成 で API キーを設定してください');
+      return;
+    }
+    if (dirty) {
+      toast('先に変更を保存してください');
+      return;
+    }
+    setAiBusy(label);
+    try {
+      const u = await fn();
+      recordUsage(u);
+      toast(`生成しました（約 $${u.costUsd.toFixed(3)}）`);
+    } catch (err) {
+      toast(friendlyError(err));
+    } finally {
+      setAiBusy(null);
+    }
   };
 
   const aiImp = draft.ai?.importance;
@@ -219,12 +243,20 @@ export default function ExpressionDetail({ id }: { id: string }) {
           <StatusSelect value={ex.status} onChange={(status) => setEx(i, { status })} />
           <div className="small muted">発音ガイド</div>
           <PronEditor value={ex.pronunciation} onChange={(pronunciation) => setEx(i, { pronunciation })} />
+          {!ex.pronunciation && ex.en.trim() && stored.examples.some((s) => s.id === ex.id) && (
+            <button className="btn sm" disabled={!!aiBusy} onClick={() => runAi(ex.id, async () => (await import('../lib/aiGenerate')).generatePronunciation(id, ex.id))}>{aiBusy === ex.id ? '生成中…' : 'AIで発音ガイドを生成'}</button>
+          )}
         </div>
       ))}
       {draft.examples.length < 3 && (
         <button className="btn block" onClick={() => set({ examples: [...draft.examples, { id: uid(), kind: (['business', 'daily', 'alternative'] as const)[draft.examples.length], en: '', ja: '', origin: 'user', status: 'verified' }] })}>＋ 例文を追加</button>
       )}
-      <p className="tiny muted">先頭の例文が学習時に最初に表示されます。AIによる3例文の自動生成はPhase 2で実装予定です。</p>
+      {draft.examples.length === 0 && draft.text && (
+        <button className="btn primary block" style={{ marginTop: 8 }} disabled={!!aiBusy} onClick={() => runAi('examples', async () => (await import('../lib/aiGenerate')).generateExamples(id))}>
+          {aiBusy === 'examples' ? 'AIで生成中…' : 'AIで3例文＋発音ガイドを生成'}
+        </button>
+      )}
+      <p className="tiny muted">先頭の例文が学習時に最初に表示されます。AI生成には Settings で API キーの設定が必要です。</p>
 
       <div className="section-title">実際に使えた？</div>
       <div className="card">

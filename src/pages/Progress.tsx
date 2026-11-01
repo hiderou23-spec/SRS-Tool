@@ -72,6 +72,39 @@ export default function Progress() {
         <p className="tiny muted" style={{ marginBottom: 0 }}>推定記憶率はFSRSが予測する現在の想起確率の平均。正答率は復習段階のカードで Again 以外を選んだ割合です。</p>
       </div>
 
+      <div className="card">
+        <h2>Reading と Speaking</h2>
+        <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+          <div className="stat"><b>{s.accuracyByMode.reading != null ? `${Math.round(s.accuracyByMode.reading * 100)}%` : '—'}</b><span>Reading 正答率</span></div>
+          <div className="stat"><b>{s.accuracyByMode.speaking != null ? `${Math.round(s.accuracyByMode.speaking * 100)}%` : '—'}</b><span>Speaking 正答率</span></div>
+          <div className="stat"><b>{s.avgMinutesPerStudyDay != null ? `${s.avgMinutesPerStudyDay.toFixed(1)}分` : '—'}</b><span>1日平均（学習日）</span></div>
+        </div>
+        <p className="tiny muted" style={{ marginBottom: 0 }}>直近30日、復習段階のカードのみ。Speaking が Reading より低いのは自然です。差が縮まるほど「使える」に近づいています。</p>
+      </div>
+
+      <div className="card">
+        <h2>今後2週間の復習予定</h2>
+        <div className="bars">
+          {s.forecast14.map((v, i) => <div key={i} className={v === 0 ? 'zero' : ''} style={{ height: `${Math.max(3, (v / Math.max(1, ...s.forecast14)) * 100)}%` }} title={`${v}件`} />)}
+        </div>
+        <div className="row between tiny muted" style={{ marginTop: 4 }}><span>明日</span><span>2週間後</span></div>
+        <p className="tiny muted" style={{ marginBottom: 0 }}>合計 {s.forecast14.reduce((a, b) => a + b, 0).toLocaleString()}件。山が高い日も、1日の学習時間の範囲で優先度順に出題されます。</p>
+      </div>
+
+      <div className="card">
+        <h2>学習素材の充実度</h2>
+        {[
+          ['例文あり', s.content.withExamples],
+          ['発音ガイドあり', s.content.withPron],
+        ].map(([label, n]) => (
+          <div key={label as string} style={{ marginBottom: 10 }}>
+            <div className="row between small"><span>{label}</span><span className="muted">{(n as number).toLocaleString()} / {s.content.total.toLocaleString()}</span></div>
+            <div className="meter" style={{ marginTop: 4 }}><div style={{ width: `${((n as number) / Math.max(1, s.content.total)) * 100}%` }} /></div>
+          </div>
+        ))}
+        {s.content.aiPending > 0 && <a className="small" href="#/review">AI生成の確認待ち：{s.content.aiPending.toLocaleString()}件 →</a>}
+      </div>
+
       {s.weak.length > 0 && (
         <div className="card">
           <h2>苦手な表現</h2>
