@@ -1,0 +1,11 @@
+const P = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, viewBox: '0 0 24 24' };
+export const IconHome = () => (<svg {...P}><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" /></svg>);
+export const IconStudy = () => (<svg {...P}><rect x="4" y="3" width="16" height="18" rx="3" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>);
+export const IconLibrary = () => (<svg {...P}><path d="M4 4h4v16H4zM10 4h4v16h-4zM16.5 4.5l3.5 1-4 14.5-3.5-1z" /></svg>);
+export const IconProgress = () => (<svg {...P}><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg>);
+export const IconSettings = () => (<svg {...P}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>);
+export const IconClose = () => (<svg {...P}><path d="M6 6l12 12M18 6 6 18" /></svg>);
+export const IconUndo = () => (<svg {...P}><path d="M9 14 4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></svg>);
+export const IconChevron = () => (<svg {...P}><path d="m6 9 6 6 6-6" /></svg>);
+export const IconBack = () => (<svg {...P}><path d="m15 18-6-6 6-6" /></svg>);
+export const IconRight = () => (<svg {...P} width="16" height="16"><path d="m9 18 6-6-6-6" /></svg>);
