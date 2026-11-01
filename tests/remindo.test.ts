@@ -59,7 +59,7 @@ describe('reminDO format', () => {
     const e = (await db.expressions.toArray()).find((x) => x.normalized === 'word1')!;
     await db.expressions.update(e.id, { importance: 10 });
     const file = { format: 'english-mastery-ai-assessment', version: 1, model: 'test', items: [
-      { key: 'hammer out', text: 'Hammer out', category: 'phrasal_verb', importance: 95 },
+      { key: 'hammer out', text: 'Hammer out', category: 'phrasal_verb', importance: 95, examples: [{ kind: 'business', en: 'We need to hammer out the details.', ja: '詳細を詰める必要がある。' }] },
       { key: 'word1', text: 'word1', category: 'low_priority', importance: 5 },
       { key: 'nonexistent', text: 'x', category: 'daily', importance: 50 },
       { key: 'ペルー', text: 'ペルー', category: 'daily', importance: 99, meaning: '南米の国\nEnglish: Peru' },
@@ -67,7 +67,11 @@ describe('reminDO format', () => {
     const v = validateAiFile(file);
     expect(v.ok).toBe(true);
     const r = await applyAiAssessment((v as { ok: true; file: never }).file);
-    expect(r).toEqual({ items: 4, matchedExpressions: 4, unmatchedItems: 1, userOverridesKept: 1 });
+    expect(r).toEqual({ items: 4, matchedExpressions: 4, unmatchedItems: 1, userOverridesKept: 1, examplesAdded: 2 });
+    const hammers = (await db.expressions.toArray()).filter((x) => x.normalized === 'hammer out');
+    expect(hammers[0].examples[0]).toMatchObject({ origin: 'ai', status: 'unverified', kind: 'business' });
+    const again = await applyAiAssessment((v as { ok: true; file: never }).file);
+    expect(again.examplesAdded).toBe(0); // idempotent: never duplicates or overwrites
     const peru = (await db.expressions.toArray()).find((x) => x.normalized === 'ペルー')!;
     expect(peru.ai!.meaning).toContain('Peru');
     expect(peru.meaning).toBe(''); // AI meaning never overwrites the user's field

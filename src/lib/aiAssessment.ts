@@ -4,10 +4,10 @@
  * importance and the imported data are never touched.
  */
 import { db } from '../db/db';
-import type { Category } from '../db/types';
+import type { Category, Example, ExampleKind } from '../db/types';
 import { CATEGORY_LABELS } from '../db/types';
 import { normalizeKey } from '../import/clean';
-import { nowIso } from './util';
+import { nowIso, uid } from './util';
 
 export const AI_FORMAT = 'english-mastery-ai-assessment';
 
@@ -16,7 +16,7 @@ export interface AiAssessmentFile {
   version: number;
   model?: string;
   generatedAt?: string;
-  items: { key?: string; text: string; category: Category; importance: number; rationale?: string; meaning?: string }[];
+  items: { key?: string; text: string; category: Category; importance: number; rationale?: string; meaning?: string; examples?: { kind: ExampleKind; en: string; ja: string }[] }[];
 }
 
 export function validateAiFile(obj: unknown): { ok: true; file: AiAssessmentFile } | { ok: false; error: string } {
@@ -32,6 +32,7 @@ export interface ApplyResult {
   matchedExpressions: number;
   unmatchedItems: number;
   userOverridesKept: number;
+  examplesAdded: number;
 }
 
 export async function applyAiAssessment(file: AiAssessmentFile): Promise<ApplyResult> {
@@ -40,6 +41,7 @@ export async function applyAiAssessment(file: AiAssessmentFile): Promise<ApplyRe
   const ts = nowIso();
   let matched = 0;
   let overrides = 0;
+  let examplesAdded = 0;
   const usedKeys = new Set<string>();
   await db.transaction('rw', db.expressions, async () => {
     const all = await db.expressions.toArray();
@@ -50,8 +52,15 @@ export async function applyAiAssessment(file: AiAssessmentFile): Promise<ApplyRe
       usedKeys.add(e.normalized);
       matched++;
       if (e.category != null || e.importance != null) overrides++;
+      // AI examples are added only when the expression has none (never overwrite the user's).
+      let examples: Example[] = e.examples;
+      if (e.examples.length === 0 && it.examples?.length) {
+        examples = it.examples.slice(0, 3).map((x) => ({ id: uid(), kind: x.kind, en: x.en, ja: x.ja, origin: 'ai' as const, status: 'unverified' as const }));
+        examplesAdded++;
+      }
       updates.push({
         ...e,
+        examples,
         ai: {
           category: it.category,
           importance: Math.max(0, Math.min(100, Math.round(it.importance))),
@@ -64,5 +73,5 @@ export async function applyAiAssessment(file: AiAssessmentFile): Promise<ApplyRe
     }
     await db.expressions.bulkPut(updates);
   });
-  return { items: file.items.length, matchedExpressions: matched, unmatchedItems: file.items.length - usedKeys.size, userOverridesKept: overrides };
+  return { items: file.items.length, matchedExpressions: matched, unmatchedItems: file.items.length - usedKeys.size, userOverridesKept: overrides, examplesAdded };
 }
