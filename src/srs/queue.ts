@@ -6,7 +6,7 @@
  * remainder simply stays due (FSRS handles overdue cards correctly when they
  * are eventually reviewed) and is reported honestly via `backlog`.
  */
-import type { Expression, ReviewCard, Settings } from '../db/types';
+import type { Expression, ReviewCard, ReviewLogEntry, Settings } from '../db/types';
 import { State } from 'ts-fsrs';
 import { retrievability } from './scheduler';
 import { endOfStudyDay } from '../lib/util';
@@ -17,6 +17,11 @@ export const DEFAULT_SECONDS_PER_REVIEW = 15;
 export const NEW_CARD_COST = 2.5;
 /** Minimum cards in a session shorter than 5 minutes. */
 export const QUICK_MIN_CARDS = 3;
+/**
+ * A learning-step card is included in a new plan only when it is due within
+ * this window. Cards due later come back on their own time (see answerCard).
+ */
+export const SHORT_TERM_LOOKAHEAD_MS = 2 * 60_000;
 /** Length of the 1-minute mode. */
 export const QUICK_MINUTES = 1;
 
@@ -35,6 +40,8 @@ export interface QueuePlan {
   backlog: number;
   dueInQueue: number;
   newInQueue: number;
+  /** Due reviews held until tomorrow because the same expression is already studied today in its other mode. */
+  buried: number;
   /** Estimated number of card-reviews fitting into the session. */
   capacity: number;
   newSuppressed: boolean;
@@ -50,6 +57,8 @@ export interface PlanInput {
   introducedToday: number;
   /** Median seconds per review from history (defaults if unknown). */
   secondsPerReview?: number;
+  /** Today's answers so far: an expression answered today isn't asked in its other mode too. */
+  todaysLogs?: Pick<ReviewLogEntry, 'expressionId'>[];
   /** Card ids to exclude (already answered in this session). */
   exclude?: Set<string>;
   /** Override minutes (e.g. "continue +5 min"). */
@@ -88,9 +97,9 @@ export function planQueue(input: PlanInput): QueuePlan {
   const recognitionById = new Map<string, ReviewCard>();
   for (const c of cards) if (c.mode === 'recognition') recognitionById.set(c.expressionId, c);
 
-  const due: ReviewCard[] = [];
-  const newRecognition: ReviewCard[] = [];
-  const newProduction: ReviewCard[] = [];
+  const candidates: ReviewCard[] = [];
+  let newRecognition: ReviewCard[] = [];
+  let newProduction: ReviewCard[] = [];
   let overdue = 0;
 
   for (const c of cards) {
@@ -112,15 +121,33 @@ export function planQueue(input: PlanInput): QueuePlan {
 
     const dueAt = new Date(c.due);
     const isShortTerm = c.state === State.Learning || c.state === State.Relearning;
-    if (isShortTerm ? dueAt.getTime() <= now.getTime() + 20 * 60_000 : dueAt <= dayEnd) {
-      due.push(c);
-      if (now.getTime() - dueAt.getTime() >= 86400_000) overdue++;
+    if (isShortTerm ? dueAt.getTime() <= now.getTime() + SHORT_TERM_LOOKAHEAD_MS : dueAt <= dayEnd) {
+      candidates.push(c);
     }
   }
 
   const prio = new Map<string, number>();
-  for (const c of due) prio.set(c.id, duePriority(c, expressions.get(c.expressionId), settings, now));
-  due.sort((a, b) => prio.get(b.id)! - prio.get(a.id)!);
+  for (const c of candidates) prio.set(c.id, duePriority(c, expressions.get(c.expressionId), settings, now));
+  candidates.sort((a, b) => prio.get(b.id)! - prio.get(a.id)!);
+
+  // One mode per expression per day ("sibling burying"): seeing the same
+  // expression as Reading and again as Speaking on the same day mostly repeats
+  // what was just recalled. Learning-step cards are never held back; a held
+  // review simply comes back tomorrow (FSRS accounts for the extra day).
+  const studiedToday = new Set((input.todaysLogs ?? []).map((l) => l.expressionId));
+  const taken = new Set<string>();
+  const due: ReviewCard[] = [];
+  let buried = 0;
+  for (const c of candidates) {
+    const isShortTerm = c.state === State.Learning || c.state === State.Relearning;
+    if (!isShortTerm && (studiedToday.has(c.expressionId) || taken.has(c.expressionId))) {
+      buried++;
+      continue;
+    }
+    taken.add(c.expressionId);
+    due.push(c);
+    if (now.getTime() - new Date(c.due).getTime() >= 86400_000) overdue++;
+  }
 
   const dueInQueue = due.slice(0, capacity);
   const remaining = capacity - dueInQueue.length;
@@ -139,8 +166,9 @@ export function planQueue(input: PlanInput): QueuePlan {
     // Stable: original import order.
     return (ea?.source?.rowIndex ?? 0) - (eb?.source?.rowIndex ?? 0) || (ea?.createdAt ?? '').localeCompare(eb?.createdAt ?? '');
   };
-  newProduction.sort(byImportance);
-  newRecognition.sort(byImportance);
+  const free = (c: ReviewCard) => !studiedToday.has(c.expressionId) && !taken.has(c.expressionId);
+  newProduction = newProduction.filter(free).sort(byImportance);
+  newRecognition = newRecognition.filter(free).sort(byImportance);
 
   // Up to half of new slots go to newly-unlocked production cards.
   const prodSlots = Math.min(newProduction.length, Math.ceil(newSlots / 2));
@@ -174,6 +202,7 @@ export function planQueue(input: PlanInput): QueuePlan {
     backlog: due.length - dueInQueue.length,
     dueInQueue: dueInQueue.length,
     newInQueue: chosenNew.length,
+    buried,
     capacity,
     newSuppressed,
     newAllowedToday,

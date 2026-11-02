@@ -130,6 +130,23 @@ export async function extendSession(sessionId: string, extraMinutes: number, now
   return s;
 }
 
+/** Never bring a card back sooner than this many cards later. */
+export const MIN_REQUEUE_GAP = 3;
+
+/**
+ * Where to re-insert a learning-step card so it comes back roughly when it is
+ * due (estimated from seconds per card). null = it wouldn't be due before the
+ * remaining queue ends, so it is left for a later session.
+ */
+export function requeuePosition(msUntilDue: number, queueLength: number, secondsPerCard: number): number | null {
+  const cardsUntilDue = Math.max(MIN_REQUEUE_GAP, Math.ceil(msUntilDue / (secondsPerCard * 1000)));
+  if (cardsUntilDue <= queueLength) return cardsUntilDue;
+  // Only a few cards left: an "Again" (1-minute step) still comes back at the
+  // end — but not as the very next card when nothing else is left.
+  if (msUntilDue <= 2 * 60_000 && queueLength > 0) return queueLength;
+  return null;
+}
+
 export interface AnswerResult {
   session: StudySession;
   card: ReviewCard;
@@ -144,6 +161,7 @@ export async function answerCard(
   now = new Date(),
 ): Promise<AnswerResult> {
   const settings = await getSettings();
+  const secondsPerCard = await estimateSecondsPerReview();
   return db.transaction('rw', db.cards, db.logs, db.sessions, async () => {
     const card = await db.cards.get(cardId);
     const session = await db.sessions.get(sessionId);
@@ -182,14 +200,16 @@ export async function answerCard(
     if (wasIntroduction) session.newCount++;
     else session.reviewedCount++;
     const shortTerm = after.state === State.Learning || after.state === State.Relearning;
-    const dueSoon = new Date(after.due).getTime() - now.getTime() <= 20 * 60_000;
-    if (shortTerm && dueSoon) {
-      // Bring it back later in this session (learning step), a few cards later.
-      const pos = Math.min(session.queue.length, 4);
+    const pos = shortTerm ? requeuePosition(new Date(after.due).getTime() - now.getTime(), session.queue.length, secondsPerCard) : null;
+    if (pos !== null) {
+      // Learning step that falls due within this session: bring it back about
+      // when FSRS asked for it, not straight away.
       session.queue.splice(pos, 0, cardId);
-    } else if (!session.done.includes(cardId)) {
+    } else if (!shortTerm && !session.done.includes(cardId)) {
       session.done.push(cardId);
     }
+    // A learning card not due before this session's queue runs out is left out
+    // of both queue and done: it stays due and the next plan picks it up.
     await db.sessions.put(session);
     return { session, card: updated, log };
   });
