@@ -4,11 +4,17 @@ import { previewToday } from '../srs/session';
 import { useSettings, toast } from '../lib/hooks';
 import { navigate } from '../lib/router';
 import { addSampleDeck } from '../lib/sample';
+import { streakFrom } from '../srs/stats';
 
 export default function Home() {
   const settings = useSettings();
   const count = useLiveQuery(() => db.expressions.count(), []);
   const plan = useLiveQuery(() => previewToday(), [settings.sessionMinutes, settings.newPerDay, settings.desiredRetention]);
+  const streak = useLiveQuery(async () => {
+    const sessions = await db.sessions.toArray();
+    const days = new Set(sessions.filter((x) => x.reviewedCount + x.newCount > 0).map((x) => x.day));
+    return streakFrom(days, new Date(), settings.dayStartHour);
+  }, [settings.dayStartHour]);
   const today = new Date().toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' });
 
   if (count === undefined || plan === undefined) return <main className="page" />;
@@ -49,14 +55,14 @@ export default function Home() {
             <div className="big">{Math.floor(todayMin)}<span style={{ fontSize: 18, fontWeight: 600 }}> / {target}分</span></div>
             <div className="small muted">今日の学習時間</div>
           </div>
-          <div className="small muted" style={{ textAlign: 'right' }}>{plan.todayReviews}回 回答</div>
+          <div className="small muted" style={{ textAlign: 'right' }}>{todayMin >= target ? '今日の目標を達成' : `目標まであと${Math.ceil(target - todayMin)}分`}</div>
         </div>
         <div className="meter" style={{ marginTop: 14 }}><div style={{ width: `${pct}%` }} /></div>
 
         <div className="stat-grid" style={{ marginTop: 18 }}>
-          <div className="stat"><b>{active ? remainingInActive : plan.dueInQueue}</b><span>{active ? '残り' : '復習'}</span></div>
-          <div className="stat"><b>{active ? active.newCount : plan.newInQueue}</b><span>{active ? '新規（済）' : '新しい表現'}</span></div>
-          <div className="stat"><b>{active ? active.reviewedCount : plan.dueTotal}</b><span>{active ? '復習（済）' : '今日が期限'}</span></div>
+          <div className="stat"><b>{active ? remainingInActive : plan.queue.length}</b><span>残り（件）</span></div>
+          <div className="stat"><b>{plan.todayReviews}</b><span>今日の回答</span></div>
+          <div className="stat"><b>{streak ?? 0}</b><span>連続（日）</span></div>
         </div>
 
         <div style={{ marginTop: 18 }}>

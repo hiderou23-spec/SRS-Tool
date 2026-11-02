@@ -152,7 +152,7 @@ export default function SettingsPage() {
       <div className="section-title">AI 生成</div>
       <AiPanel />
       <div className="list">
-        <Link href="#/review" label="AI生成コンテンツの確認" />
+        <Link href="#/review" label="AIの内容を見直す" />
       </div>
 
       <div className="section-title">データ</div>

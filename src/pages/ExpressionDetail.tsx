@@ -10,7 +10,9 @@ import { retrievability, State } from '../srs/scheduler';
 import { useSettings, toast } from '../lib/hooks';
 import { hashParams, navigate } from '../lib/router';
 import { IconBack } from '../components/Icons';
-import { QualityChip } from '../components/Pronunciation';
+import { PronunciationView, QualityChip } from '../components/Pronunciation';
+import { highlight } from '../components/Highlight';
+import { IconChevron } from '../components/Icons';
 import { friendlyError, getApiKey, type GenerateUsage } from '../lib/aiConfig';
 import { recordUsage } from '../components/AiPanel';
 
@@ -86,6 +88,8 @@ export default function ExpressionDetail({ id }: { id: string }) {
   const [dirty, setDirty] = useState(false);
   const [aiBusy, setAiBusy] = useState<string | null>(null);
   const isNewParam = hashParams().get('new') === '1';
+  const [editing, setEditing] = useState(isNewParam);
+  const [pronOpen, setPronOpen] = useState<string | null>(null);
 
   useEffect(() => {
     if (stored && !dirty) setDraft(stored);
@@ -115,6 +119,7 @@ export default function ExpressionDetail({ id }: { id: string }) {
       if (next.normalized !== stored.normalized) await refreshDuplicateGroups();
     });
     setDirty(false);
+    setEditing(false);
     toast('保存しました');
   };
 
@@ -131,6 +136,12 @@ export default function ExpressionDetail({ id }: { id: string }) {
 
   const back = () => {
     if (dirty && !confirm('保存していない変更があります。破棄しますか？')) return;
+    if (editing && !isNewParam) {
+      setDraft(stored);
+      setDirty(false);
+      setEditing(false);
+      return;
+    }
     if (isNewParam && !stored.text) {
       void db.transaction('rw', db.expressions, db.cards, async () => {
         await db.cards.where('expressionId').equals(id).delete();
@@ -171,10 +182,140 @@ export default function ExpressionDetail({ id }: { id: string }) {
   const aiImp = draft.ai?.importance;
   const sortedLogs = [...(logs ?? [])].sort((a, b) => b.reviewedAt.localeCompare(a.reviewedAt));
 
+  const adoptAiMeaning = async () => {
+    if (!stored.ai?.meaning) return;
+    await db.expressions.update(id, { meaning: stored.meaning ? `${stored.meaning}\n${stored.ai.meaning}` : stored.ai.meaning, updatedAt: nowIso() });
+    toast('自分の訳として保存しました');
+  };
+  const setSuspended = async (v: boolean) => {
+    await db.expressions.update(id, { suspended: v, updatedAt: nowIso() });
+    toast(v ? '学習から外しました' : '学習に戻しました');
+  };
+
+  if (!editing) {
+    const cat = stored.category ?? stored.ai?.category;
+    return (
+      <main className="page">
+        <div className="row between" style={{ marginBottom: 6 }}>
+          <button className="icon-btn" onClick={back} aria-label="戻る" style={{ marginLeft: -10 }}><IconBack /></button>
+          <button className="btn sm" onClick={() => setEditing(true)}>編集</button>
+        </div>
+
+        <div className="card">
+          <div className="detail-expr">{stored.text || <span className="muted">（未入力）</span>}</div>
+          <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+            {cat && <span className="chip">{CATEGORY_LABELS[cat]}</span>}
+            <span className="chip">重要度 {effectiveImportance(stored)}</span>
+            {stored.suspended && <span className="chip warn">除外中</span>}
+          </div>
+          {stored.meaning && <p className="meaning" style={{ marginTop: 14, fontSize: 17 }}>{stored.meaning}</p>}
+          {stored.ai?.meaning && (
+            <div style={{ marginTop: stored.meaning ? 10 : 14 }}>
+              <p className={stored.meaning ? 'small' : 'meaning'} style={{ margin: 0, whiteSpace: 'pre-line', fontSize: stored.meaning ? undefined : 17, color: stored.meaning ? 'var(--ink-2)' : undefined }}>
+                {stored.ai.meaning} <span className="ai-tag">AI</span>
+              </p>
+              <button className="btn ghost sm" style={{ marginLeft: -10 }} onClick={adoptAiMeaning}>{stored.meaning ? 'AI訳を意味に追記' : 'この訳を自分の訳として保存'}</button>
+            </div>
+          )}
+          {!stored.meaning && !stored.ai?.meaning && <p className="muted" style={{ marginTop: 14 }}>日本語の意味がまだありません。</p>}
+          {stored.notes && <p className="small muted" style={{ whiteSpace: 'pre-line', marginBottom: 0 }}>{stored.notes}</p>}
+          {stored.suspended && (
+            <button className="btn block" style={{ marginTop: 12 }} onClick={() => setSuspended(false)}>学習に戻す</button>
+          )}
+        </div>
+
+        <div className="section-title">例文</div>
+        {stored.examples.length === 0 && (
+          <div className="card">
+            <p className="small muted" style={{ marginTop: 0 }}>例文はまだありません。</p>
+            {stored.text && (
+              <button className="btn primary block" disabled={!!aiBusy} onClick={() => runAi('examples', async () => (await import('../lib/aiGenerate')).generateExamples(id))}>
+                {aiBusy === 'examples' ? 'AIで生成中…' : 'AIで3例文＋発音ガイドを生成'}
+              </button>
+            )}
+          </div>
+        )}
+        {stored.examples.map((ex) => (
+          <div className="card" key={ex.id}>
+            <div className="row" style={{ gap: 6, marginBottom: 6 }}>
+              <span className="chip">{KINDS.find((k) => k.k === ex.kind)?.label}</span>
+              {ex.origin === 'ai' && ex.status !== 'verified' && <span className="ai-tag">AI</span>}
+            </div>
+            <div className="example" style={{ marginTop: 0 }}>
+              <div className="en">{highlight(ex.en, stored.text)}</div>
+              {ex.ja && <div className="ja">{ex.ja}</div>}
+            </div>
+            <button className="disclosure" aria-expanded={pronOpen === ex.id} onClick={() => setPronOpen(pronOpen === ex.id ? null : ex.id)}>
+              <span>発音ガイド{ex.pronunciation ? '' : '（未登録）'}</span>
+              <IconChevron />
+            </button>
+            {pronOpen === ex.id && (
+              ex.pronunciation
+                ? <PronunciationView guide={ex.pronunciation} sentence={ex.en} settings={settings} />
+                : <button className="btn sm" style={{ marginTop: 8 }} disabled={!!aiBusy} onClick={() => runAi(ex.id, async () => (await import('../lib/aiGenerate')).generatePronunciation(id, ex.id))}>{aiBusy === ex.id ? '生成中…' : 'AIで発音ガイドを生成'}</button>
+            )}
+          </div>
+        ))}
+      <div className="section-title">実際に使えた？</div>
+      <div className="card">
+        <p className="small" style={{ marginTop: 0 }}>会議や会話で実際に使えたら記録しましょう（自己申告。アプリ内の習得推定とは別に集計します）。</p>
+        <button className="btn block" onClick={markUsed}>今日使えた！（{stored.usedInRealLife.length}回）</button>
+      </div>
+
+      <details className="card">
+        <summary className="section-summary">学習状態（FSRS）</summary>
+        <div style={{ marginTop: 12 }}>
+        {(cards ?? []).filter((c) => c.mode !== 'listening').sort((a, b) => a.mode.localeCompare(b.mode)).map((c) => {
+          const r = retrievability(settings, c.fsrs);
+          return (
+            <div key={c.id} style={{ marginBottom: 12 }}>
+              <div className="row between"><b>{c.mode === 'recognition' ? 'Reading' : 'Speaking'}</b><span className="chip">{STATE_LABEL[c.state]}</span></div>
+              {c.state === State.New ? (
+                <div className="small muted">{c.mode === 'production' && draft.lang === 'ja' ? '日本語の用語のためSpeakingは出題しません' : c.mode === 'production' ? `Readingが安定（${settings.productionUnlockStabilityDays}日以上）すると出題されます` : 'まだ学習していません'}</div>
+              ) : (
+                <div className="small muted">
+                  次回: {new Date(c.due).toLocaleDateString('ja-JP')}（間隔 {formatInterval(c.fsrs.scheduled_days)}）・安定度 {formatInterval(c.fsrs.stability)}・難易度 {c.fsrs.difficulty.toFixed(1)}/10・復習 {c.fsrs.reps}回・失念 {c.fsrs.lapses}回{r != null ? `・現在の想起確率 ${(r * 100).toFixed(0)}%` : ''}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {sortedLogs.length > 0 && (
+          <details>
+            <summary className="small" style={{ cursor: 'pointer' }}>復習履歴（{sortedLogs.length}）</summary>
+            <div className="small muted" style={{ marginTop: 8 }}>
+              {sortedLogs.slice(0, 50).map((l) => (
+                <div key={l.id} className="row between" style={{ padding: '4px 0' }}>
+                  <span>{new Date(l.reviewedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {l.mode === 'recognition' ? 'R' : 'S'}</span>
+                  <span>{RATING_LABEL[l.rating]} → {new Date(l.after.due).toLocaleDateString('ja-JP')}</span>
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
+        </div>
+      </details>
+
+      {raw && (
+        <>
+          <details className="card small" style={{ wordBreak: 'break-word' }}>
+            <summary className="section-summary">元データ（インポート時のまま）</summary>
+            <div style={{ marginTop: 10 }}>
+            {raw.cells.map((c, i) => <div key={i}><span className="muted">列{i + 1}:</span> {c || <span className="muted">（空）</span>}</div>)}
+            </div>
+          </details>
+        </>
+      )}
+
+      </main>
+    );
+  }
+
   return (
     <main className="page">
       <div className="row between" style={{ marginBottom: 6 }}>
-        <button className="icon-btn" onClick={back} aria-label="戻る" style={{ marginLeft: -10 }}><IconBack /></button>
+        <button className="btn ghost sm" onClick={back} style={{ marginLeft: -10 }}>{isNewParam ? '戻る' : 'キャンセル'}</button>
+        <b className="small">編集</b>
         <button className="btn primary sm" onClick={save} disabled={!dirty}>保存</button>
       </div>
 
@@ -241,8 +382,10 @@ export default function ExpressionDetail({ id }: { id: string }) {
             </div>
           </div>
           <StatusSelect value={ex.status} onChange={(status) => setEx(i, { status })} />
-          <div className="small muted">発音ガイド</div>
-          <PronEditor value={ex.pronunciation} onChange={(pronunciation) => setEx(i, { pronunciation })} />
+          <details>
+            <summary className="small" style={{ cursor: 'pointer' }}>発音ガイド{ex.pronunciation ? 'を編集' : '（未登録）'}</summary>
+            <div style={{ marginTop: 8 }}><PronEditor value={ex.pronunciation} onChange={(pronunciation) => setEx(i, { pronunciation })} /></div>
+          </details>
           {!ex.pronunciation && ex.en.trim() && stored.examples.some((s) => s.id === ex.id) && (
             <button className="btn sm" disabled={!!aiBusy} onClick={() => runAi(ex.id, async () => (await import('../lib/aiGenerate')).generatePronunciation(id, ex.id))}>{aiBusy === ex.id ? '生成中…' : 'AIで発音ガイドを生成'}</button>
           )}
@@ -256,54 +399,7 @@ export default function ExpressionDetail({ id }: { id: string }) {
           {aiBusy === 'examples' ? 'AIで生成中…' : 'AIで3例文＋発音ガイドを生成'}
         </button>
       )}
-      <p className="tiny muted">先頭の例文が学習時に最初に表示されます。AI生成には Settings で API キーの設定が必要です。</p>
-
-      <div className="section-title">実際に使えた？</div>
-      <div className="card">
-        <p className="small" style={{ marginTop: 0 }}>会議や会話で実際に使えたら記録しましょう（自己申告。アプリ内の習得推定とは別に集計します）。</p>
-        <button className="btn block" onClick={markUsed}>今日使えた！（{stored.usedInRealLife.length}回）</button>
-      </div>
-
-      <div className="section-title">学習状態（FSRS）</div>
-      <div className="card">
-        {(cards ?? []).filter((c) => c.mode !== 'listening').sort((a, b) => a.mode.localeCompare(b.mode)).map((c) => {
-          const r = retrievability(settings, c.fsrs);
-          return (
-            <div key={c.id} style={{ marginBottom: 12 }}>
-              <div className="row between"><b>{c.mode === 'recognition' ? 'Reading' : 'Speaking'}</b><span className="chip">{STATE_LABEL[c.state]}</span></div>
-              {c.state === State.New ? (
-                <div className="small muted">{c.mode === 'production' && draft.lang === 'ja' ? '日本語の用語のためSpeakingは出題しません' : c.mode === 'production' ? `Readingが安定（${settings.productionUnlockStabilityDays}日以上）すると出題されます` : 'まだ学習していません'}</div>
-              ) : (
-                <div className="small muted">
-                  次回: {new Date(c.due).toLocaleDateString('ja-JP')}（間隔 {formatInterval(c.fsrs.scheduled_days)}）・安定度 {formatInterval(c.fsrs.stability)}・難易度 {c.fsrs.difficulty.toFixed(1)}/10・復習 {c.fsrs.reps}回・失念 {c.fsrs.lapses}回{r != null ? `・現在の想起確率 ${(r * 100).toFixed(0)}%` : ''}
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {sortedLogs.length > 0 && (
-          <details>
-            <summary className="small" style={{ cursor: 'pointer' }}>復習履歴（{sortedLogs.length}）</summary>
-            <div className="small muted" style={{ marginTop: 8 }}>
-              {sortedLogs.slice(0, 50).map((l) => (
-                <div key={l.id} className="row between" style={{ padding: '4px 0' }}>
-                  <span>{new Date(l.reviewedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {l.mode === 'recognition' ? 'R' : 'S'}</span>
-                  <span>{RATING_LABEL[l.rating]} → {new Date(l.after.due).toLocaleDateString('ja-JP')}</span>
-                </div>
-              ))}
-            </div>
-          </details>
-        )}
-      </div>
-
-      {raw && (
-        <>
-          <div className="section-title">元データ（インポート時のまま・変更されません）</div>
-          <div className="card small" style={{ wordBreak: 'break-word' }}>
-            {raw.cells.map((c, i) => <div key={i}><span className="muted">列{i + 1}:</span> {c || <span className="muted">（空）</span>}</div>)}
-          </div>
-        </>
-      )}
+      <p className="tiny muted">初めて学ぶ時は Business の例文、その後は復習のたびに例文が入れ替わります。AI生成には Settings で API キーの設定が必要です。</p>
 
       <button className="btn ghost block danger" style={{ marginTop: 20 }} onClick={remove}>この表現を削除</button>
     </main>

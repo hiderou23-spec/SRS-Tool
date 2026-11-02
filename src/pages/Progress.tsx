@@ -18,14 +18,31 @@ function ModeBar({ label, p }: { label: string; p: ModeProgress }) {
   );
 }
 
+/** Below this many answers, accuracy/retention numbers are mostly noise. */
+const EARLY_REVIEWS = 30;
+
 export default function Progress() {
   const s = useLiveQuery(() => computeProgress(), []);
   if (!s) return <main className="page"><h1 className="page-title">Progress</h1></main>;
   const maxMs = Math.max(1, ...s.last14.map((d) => d.ms));
+  const early = s.totalReviews < EARLY_REVIEWS;
 
   return (
     <main className="page">
       <h1 className="page-title">Progress</h1>
+
+      <div className="card">
+        <h2>直近14日</h2>
+        <div className="bars">
+          {s.last14.map((d) => <div key={d.day} className={d.ms === 0 ? 'zero' : ''} style={{ height: `${Math.max(3, (d.ms / maxMs) * 100)}%` }} title={`${d.day}: ${Math.round(d.ms / 60000)}分`} />)}
+        </div>
+        <div className="row between tiny muted" style={{ marginTop: 4 }}><span>2週間前</span><span>今日</span></div>
+        <div className="stat-grid" style={{ marginTop: 14 }}>
+          <div className="stat"><b>{s.streak}</b><span>連続日数</span></div>
+          <div className="stat"><b>{s.studyDays}</b><span>学習日数</span></div>
+          <div className="stat"><b style={{ fontSize: 18 }}>{formatDuration(s.totalMs)}</b><span>総学習時間</span></div>
+        </div>
+      </div>
 
       <div className="card">
         <h2>成長の階段</h2>
@@ -43,25 +60,21 @@ export default function Progress() {
       </div>
 
       <div className="card">
-        <h2>直近14日</h2>
-        <div className="bars">
-          {s.last14.map((d) => <div key={d.day} className={d.ms === 0 ? 'zero' : ''} style={{ height: `${Math.max(3, (d.ms / maxMs) * 100)}%` }} title={`${d.day}: ${Math.round(d.ms / 60000)}分`} />)}
-        </div>
-        <div className="row between tiny muted" style={{ marginTop: 4 }}><span>2週間前</span><span>今日</span></div>
-        <div className="stat-grid" style={{ marginTop: 14 }}>
-          <div className="stat"><b>{s.streak}</b><span>連続日数</span></div>
-          <div className="stat"><b>{s.studyDays}</b><span>学習日数</span></div>
-          <div className="stat"><b style={{ fontSize: 18 }}>{formatDuration(s.totalMs)}</b><span>総学習時間</span></div>
-        </div>
-      </div>
-
-      <div className="card">
         <h2>習得状況</h2>
         <ModeBar label="Reading（意味が分かる）" p={s.reading} />
         <ModeBar label="Speaking（英語で言える）" p={s.speaking} />
         <p className="tiny muted" style={{ margin: 0 }}>Listening は高品質な音声の確保後（Phase 3）に追加予定です。</p>
       </div>
 
+      {early ? (
+        <div className="card">
+          <h2>これから表示される分析</h2>
+          <p className="small" style={{ margin: 0 }}>
+            記憶率・Reading と Speaking の正答率・今後の復習予定は、回答が{EARLY_REVIEWS}回を超えると表示されます（今 {s.totalReviews}回）。まずは1週間、毎日少しずつ続けてみましょう。
+          </p>
+        </div>
+      ) : (
+        <>
       <div className="card">
         <h2>記憶の質</h2>
         <div className="stat-grid">
@@ -91,6 +104,9 @@ export default function Progress() {
         <p className="tiny muted" style={{ marginBottom: 0 }}>合計 {s.forecast14.reduce((a, b) => a + b, 0).toLocaleString()}件。山が高い日も、1日の学習時間の範囲で優先度順に出題されます。</p>
       </div>
 
+        </>
+      )}
+
       <div className="card">
         <h2>学習素材の充実度</h2>
         {[
@@ -102,7 +118,11 @@ export default function Progress() {
             <div className="meter" style={{ marginTop: 4 }}><div style={{ width: `${((n as number) / Math.max(1, s.content.total)) * 100}%` }} /></div>
           </div>
         ))}
-        {s.content.aiPending > 0 && <a className="small" href="#/review">AI生成の確認待ち：{s.content.aiPending.toLocaleString()}件 →</a>}
+        {s.content.aiPending > 0 && (
+          <p className="small" style={{ margin: 0 }}>
+            AIが作った内容は、学習中に気になったものだけ直せば十分です。<a href="#/review">まとめて見直す →</a>
+          </p>
+        )}
       </div>
 
       {s.weak.length > 0 && (
@@ -126,7 +146,7 @@ export default function Progress() {
           </div>
         ))}
         {s.categories.length === 1 && s.categories[0].key === 'uncategorized' && (
-          <p className="tiny muted" style={{ margin: 0 }}>AIによるカテゴリー分類はPhase 2で実装予定です。各表現の編集画面から手動で設定できます。</p>
+          <p className="tiny muted" style={{ margin: 0 }}>カテゴリーは AI分類ファイルの取り込み、または各表現の編集画面で設定できます。</p>
         )}
       </div>
     </main>

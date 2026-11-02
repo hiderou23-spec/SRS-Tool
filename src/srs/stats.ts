@@ -50,6 +50,18 @@ function modeProgress(cards: ReviewCard[]): ModeProgress {
   return p;
 }
 
+/** Consecutive study days ending today (today not studied yet doesn't break it). */
+export function streakFrom(days: Set<string>, now: Date, dayStartHour: number): number {
+  let streak = 0;
+  for (let i = 0; ; i++) {
+    const k = dayKey(new Date(now.getTime() - i * 86400_000), dayStartHour);
+    if (days.has(k)) streak++;
+    else if (i === 0) continue;
+    else break;
+  }
+  return streak;
+}
+
 export async function computeProgress(now = new Date()): Promise<ProgressStats> {
   const settings = await getSettings();
   const [exprs, cards, logs] = await Promise.all([db.expressions.toArray(), db.cards.toArray(), db.logs.toArray()]);
@@ -68,13 +80,7 @@ export async function computeProgress(now = new Date()): Promise<ProgressStats> 
     d.reviews++;
     days.set(k, d);
   }
-  let streak = 0;
-  for (let i = 0; ; i++) {
-    const k = dayKey(new Date(now.getTime() - i * 86400_000), settings.dayStartHour);
-    if (days.has(k)) streak++;
-    else if (i === 0) continue; // today not yet studied doesn't break the streak
-    else break;
-  }
+  const streak = streakFrom(new Set(days.keys()), now, settings.dayStartHour);
 
   const since = now.getTime() - 30 * 86400_000;
   const mature = logs.filter((l) => new Date(l.reviewedAt).getTime() >= since && l.before.state === State.Review);
