@@ -63,6 +63,12 @@ export default function Study() {
   const [showComplete, setShowComplete] = useState(false);
   const [completeDismissed, setCompleteDismissed] = useState(false);
   const [busy, setBusy] = useState(false);
+  /** Bumped on every answer / undo / exclude so the same card id coming back is reloaded. */
+  const [turn, setTurn] = useState(0);
+  /** True from an answer until the next card is on screen (blocks double answers). */
+  const [loadingNext, setLoadingNext] = useState(false);
+  /** Next card prefetched while the current one is shown, so advancing needs no DB wait. */
+  const prefetched = useRef(new Map<string, Promise<{ c?: ReviewCard; e?: Expression }>>());
   const [menuOpen, setMenuOpen] = useState(false);
   const totalAnswers = useLiveQuery(() => db.logs.count(), []);
   const [excluded, setExcluded] = useState<{ id: string; text: string; prevQueue: string[] } | null>(null);
@@ -113,6 +119,14 @@ export default function Study() {
   }, []);
 
   const currentId = session?.queue[0] ?? null;
+  const nextId = session?.queue[1] ?? null;
+
+  const fetchCard = (id: string) =>
+    db.transaction('r', db.cards, db.expressions, async () => {
+      const c = await db.cards.get(id);
+      const e = c ? await db.expressions.get(c.expressionId) : undefined;
+      return { c, e };
+    });
 
   useEffect(() => {
     let cancelled = false;
@@ -120,10 +134,12 @@ export default function Study() {
       if (!currentId) {
         setCard(null);
         setExpr(null);
+        setLoadingNext(false);
         return;
       }
-      const c = await db.cards.get(currentId);
-      const e = c ? await db.expressions.get(c.expressionId) : undefined;
+      const cached = prefetched.current.get(currentId);
+      prefetched.current.delete(currentId);
+      const { c, e } = await (cached ?? fetchCard(currentId));
       if (cancelled) return;
       if (!c || !e) {
         // Card was deleted meanwhile: drop it from the queue.
@@ -137,6 +153,7 @@ export default function Study() {
       }
       setCard(c);
       setExpr(e);
+      setLoadingNext(false);
       setRevealed(false);
       setMoreOpen(false);
       setPronOpen(null);
@@ -147,7 +164,28 @@ export default function Study() {
     return () => {
       cancelled = true;
     };
-  }, [currentId]);
+    // `turn`: a learning card can come straight back with the same id (e.g. the
+    // last card in the queue answered Again); it must still be reloaded.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentId, turn]);
+
+  // Prefetch the following card. Cached entries are only ever for cards that
+  // haven't been answered since (the answered card's entry is dropped).
+  useEffect(() => {
+    if (nextId && nextId !== currentId && !prefetched.current.has(nextId)) {
+      const pr = fetchCard(nextId);
+      pr.catch(() => prefetched.current.delete(nextId));
+      prefetched.current.set(nextId, pr);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nextId, currentId, turn]);
+
+  /** Apply a session returned by an action and force the current card to reload. */
+  const applySession = (s: StudySession, changedCardId?: string) => {
+    if (changedCardId) prefetched.current.delete(changedCardId);
+    setSession({ ...s });
+    setTurn((n) => n + 1);
+  };
 
   const intervals = useMemo(() => (card ? previewIntervals(settings, card.fsrs) : null), [card, settings]);
 
@@ -156,18 +194,20 @@ export default function Study() {
 
   const answer = useCallback(
     async (r: RatingValue) => {
-      if (!session || !card || busy) return;
+      if (!session || !card || busy || loadingNext) return;
       setBusy(true);
       try {
         const res = await answerCard(session.id, card.id, r, cardElapsed());
         setExcluded(null);
-        setSession({ ...res.session });
+        setLoadingNext(true);
+        applySession(res.session, card.id);
         if (!completeDismissed && res.session.activeMs >= targetMs && res.session.queue.length > 0) setShowComplete(true);
       } finally {
         setBusy(false);
       }
     },
-    [session, card, busy, completeDismissed, targetMs],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [session, card, busy, loadingNext, completeDismissed, targetMs],
   );
 
   const exclude = async () => {
@@ -177,7 +217,7 @@ export default function Study() {
       const res = await excludeExpression(session.id, expr.id);
       if (!res) return;
       setExcluded({ id: expr.id, text: expr.text || expr.meaning, prevQueue: res.prevQueue });
-      setSession({ ...res.session });
+      applySession(res.session);
     } finally {
       setBusy(false);
     }
@@ -187,7 +227,7 @@ export default function Study() {
     if (!session || !excluded) return;
     const s = await restoreExpression(session.id, excluded.id, excluded.prevQueue);
     setExcluded(null);
-    if (s) setSession({ ...s });
+    if (s) applySession(s);
   };
 
   const excludedBar = excluded && (
@@ -200,7 +240,11 @@ export default function Study() {
   const undo = async () => {
     if (!session) return;
     const s = await undoLast(session.id);
-    if (s) setSession({ ...s });
+    // The undone card's state changed back: never reuse a prefetched copy of it.
+    if (s) {
+      prefetched.current.clear();
+      applySession(s);
+    }
   };
 
   const end = async () => {
@@ -213,7 +257,7 @@ export default function Study() {
     const s = await extendSession(session.id, min);
     setShowComplete(false);
     setCompleteDismissed(true);
-    setSession({ ...s });
+    applySession(s);
   };
 
   // Keyboard shortcuts (useful on iPad / desktop).
@@ -362,7 +406,7 @@ export default function Study() {
           )}
           <div className="ratings">
             {RATINGS.map(({ v, label, cls }) => (
-              <button key={v} className={`rate ${cls}`} disabled={busy} onClick={() => answer(v)}>
+              <button key={v} className={`rate ${cls}`} disabled={busy || loadingNext} onClick={() => answer(v)}>
                 <b>{label}</b>
                 <small>{intervals ? formatInterval(intervals[v]) : ''}</small>
               </button>
