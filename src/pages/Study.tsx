@@ -42,8 +42,14 @@ function ExampleBlock({ ex, expr, open, onToggle, hideJa }: { ex: Example; expr:
   );
 }
 
-function Encouragement({ sessionId }: { sessionId: string }) {
-  const { message, tip } = useMemo(() => encouragementFor(sessionId), [sessionId]);
+function Encouragement({ session }: { session: StudySession }) {
+  const answered = session.reviewedCount + session.newCount;
+  // A new pair per end screen: the goal sheet and a later finished screen of
+  // the same session (or after "あと5分") show different text.
+  const { message, tip } = useMemo(
+    () => encouragementFor({ sessionId: session.id, answered, quick: session.quick }),
+    [session.id, answered, session.quick],
+  );
   return (
     <div className="encourage">
       <p className="msg">{message}</p>
@@ -307,7 +313,7 @@ export default function Study() {
             {session.reviewedCount}件の復習・{session.newCount}件の新しい表現 / {Math.round(session.activeMs / 60000)}分
           </p>
           <VocabSessionSummary sessionId={session.id} />
-          <Encouragement sessionId={session.id} />
+          <Encouragement session={session} />
           <p className="tiny muted">次回の復習日はFSRSが自動で決めています。</p>
         </div>
         <div className="study-bottom stack">
@@ -422,7 +428,7 @@ export default function Study() {
             <div style={{ fontSize: 40 }}>🎉</div>
             <h2 style={{ margin: '4px 0 6px' }}>{session.quick && session.targetMinutes === 1 ? '1分完了。今日もつながりました' : `今日の${session.targetMinutes}分が完了しました`}</h2>
             <VocabSessionSummary sessionId={session.id} />
-            <Encouragement sessionId={session.id} />
+            <Encouragement session={session} />
             <p className="muted tiny" style={{ margin: '10px 0 0' }}>ここで終えても大丈夫です。残りは明日以降に自動で回ります。</p>
             <div className="stack" style={{ marginTop: 18 }}>
               <button className="btn primary block lg" onClick={end}>今日はここまで</button>

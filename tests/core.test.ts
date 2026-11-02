@@ -9,7 +9,7 @@ import { answerCard, startOrResumeSession, undoLast, previewToday, excludeExpres
 import { createBackup, restoreBackup, validateBackup, buildCsv } from '../src/lib/backup';
 import { planQueue } from '../src/srs/queue';
 import { pickExample } from '../src/srs/rotation';
-import { pick, MESSAGES, TIPS } from '../src/lib/encouragement';
+import { encouragementWith, nextFromBag, MESSAGES, QUICK_MESSAGES, TIPS, type KV } from '../src/lib/encouragement';
 import type { Example } from '../src/db/types';
 
 let n = 0;
@@ -219,15 +219,48 @@ describe('example rotation', () => {
 });
 
 describe('encouragement', () => {
-  it('goes round every message and tip before repeating', () => {
-    const msgs = new Set<string>(), tips = new Set<string>();
-    for (let i = 0; i < MESSAGES.length; i++) msgs.add(pick(i).message);
-    for (let i = 0; i < TIPS.length; i++) tips.add(pick(i).tip);
-    expect(msgs.size).toBe(MESSAGES.length);
-    expect(tips.size).toBe(TIPS.length);
-    for (let i = 0; i < 100; i++) {
-      expect(pick(i).message).not.toBe(pick(i + 1).message);
-      expect(pick(i).tip).not.toBe(pick(i + 1).tip);
+  const memStore = (): KV & { m: Map<string, string> } => {
+    const m = new Map<string, string>();
+    return { m, getItem: (k) => m.get(k) ?? null, setItem: (k, v) => void m.set(k, v) };
+  };
+
+  it('uses every entry once per round, in a new order, never repeating back-to-back', () => {
+    const store = memStore();
+    const n = MESSAGES.length;
+    const rounds: number[][] = [];
+    for (let r = 0; r < 20; r++) rounds.push(Array.from({ length: n }, () => nextFromBag(store, 'messages', n)));
+    for (const round of rounds) expect(new Set(round).size).toBe(n);
+    const flat = rounds.flat();
+    for (let i = 1; i < flat.length; i++) expect(flat[i]).not.toBe(flat[i - 1]);
+    expect(rounds.some((round) => round.join() !== rounds[0].join())).toBe(true);
+  });
+
+  it('reshuffles when the list size changes', () => {
+    const store = memStore();
+    nextFromBag(store, 'tips', 5);
+    expect(nextFromBag(store, 'tips', TIPS.length)).toBeLessThan(TIPS.length);
+  });
+
+  it('gives a new pair for each end screen, but keeps it for re-renders', () => {
+    const store = memStore();
+    const a = encouragementWith(store, { sessionId: 's1', answered: 12 });
+    expect(encouragementWith(store, { sessionId: 's1', answered: 12 })).toEqual(a);
+    const b = encouragementWith(store, { sessionId: 's1', answered: 20 }); // same session, later screen
+    expect(b.message).not.toBe(a.message);
+    expect(b.tip).not.toBe(a.tip);
+    const c = encouragementWith(store, { sessionId: 's2', answered: 12 });
+    expect(c.message).not.toBe(b.message);
+  });
+
+  it('mixes 1-minute messages into quick sessions only', () => {
+    const store = memStore();
+    const quick = new Set(QUICK_MESSAGES);
+    let quickSeen = 0;
+    for (let i = 0; i < 40; i++) {
+      if (quick.has(encouragementWith(store, { sessionId: 'n' + i, answered: 1 }).message)) throw new Error('quick message in normal session');
+      if (quick.has(encouragementWith(store, { sessionId: 'q' + i, answered: 1, quick: true }).message)) quickSeen++;
     }
+    expect(quickSeen).toBeGreaterThan(0);
+    expect(quickSeen).toBeLessThan(40);
   });
 });
