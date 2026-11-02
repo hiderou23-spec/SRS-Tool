@@ -190,6 +190,8 @@ export interface StudySession {
   newCount: number;
   /** Local date key YYYY-MM-DD */
   day: string;
+  /** 1-minute mode ("1分だけ") session. */
+  quick?: boolean;
 }
 
 export interface ImportBatch {

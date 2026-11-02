@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { computeProgress, ESTABLISHED_DAYS, type ModeProgress } from '../srs/stats';
 import { formatDuration } from '../lib/util';
+import { VocabForecastCard } from '../components/Vocab';
 
 function ModeBar({ label, p }: { label: string; p: ModeProgress }) {
   const total = Math.max(1, p.notStarted + p.learning + p.established);
@@ -30,6 +31,8 @@ export default function Progress() {
   return (
     <main className="page">
       <h1 className="page-title">Progress</h1>
+
+      <VocabForecastCard />
 
       <div className="card">
         <h2>直近14日</h2>

@@ -15,6 +15,10 @@ export const DEFAULT_IMPORTANCE = 50;
 export const DEFAULT_SECONDS_PER_REVIEW = 15;
 /** A new card costs more time than a review (first exposure + learning steps). */
 export const NEW_CARD_COST = 2.5;
+/** Minimum cards in a session shorter than 5 minutes. */
+export const QUICK_MIN_CARDS = 3;
+/** Length of the 1-minute mode. */
+export const QUICK_MINUTES = 1;
 
 export function effectiveImportance(e: Pick<Expression, 'importance' | 'ai'> | undefined): number {
   if (!e) return DEFAULT_IMPORTANCE;
@@ -75,7 +79,9 @@ export function planQueue(input: PlanInput): QueuePlan {
   const { cards, expressions, settings, now } = input;
   const minutes = input.minutes ?? settings.sessionMinutes;
   const spr = input.secondsPerReview ?? DEFAULT_SECONDS_PER_REVIEW;
-  const capacity = Math.max(5, Math.floor((minutes * 60) / spr));
+  // Short sessions (1-minute mode) get a smaller floor so they really stay short.
+  const minCapacity = minutes < 5 ? QUICK_MIN_CARDS : 5;
+  const capacity = Math.max(minCapacity, Math.floor((minutes * 60) / spr));
   const exclude = input.exclude ?? new Set<string>();
   const dayEnd = endOfStudyDay(now, settings.dayStartHour);
 

@@ -5,6 +5,7 @@ import { useSettings, toast } from '../lib/hooks';
 import { navigate } from '../lib/router';
 import { addSampleDeck } from '../lib/sample';
 import { streakFrom } from '../srs/stats';
+import { VocabCounter } from '../components/Vocab';
 
 export default function Home() {
   const settings = useSettings();
@@ -72,7 +73,10 @@ export default function Home() {
               <button className="btn block" onClick={() => navigate('study?extra=1')}>もう少し続ける</button>
             </div>
           ) : (
-            <a className="btn primary block lg" href="#/study">{active && active.reviewedCount + active.newCount > 0 ? '続きから再開' : '学習を開始'}</a>
+            <>
+              <a className="btn primary block lg" href="#/study">{active && active.reviewedCount + active.newCount > 0 ? '続きから再開' : '学習を開始'}</a>
+              <button className="btn ghost block" style={{ marginTop: 8 }} onClick={() => navigate('study?quick=1')}>時間がない日は 1分だけ</button>
+            </>
           )}
         </div>
 
@@ -82,6 +86,8 @@ export default function Home() {
           ))}
         </div>
       </section>
+
+      <VocabCounter />
 
       {plan.backlog > 0 && (
         <div className="notice info">

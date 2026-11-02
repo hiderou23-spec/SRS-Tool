@@ -287,3 +287,16 @@ table.preview td, table.preview th { border-bottom: 0.5px solid var(--line); pad
   background: var(--bg);
   z-index: 25;
 }
+
+/* Vocabulary counter */
+a.card.vocab { display: block; color: inherit; text-decoration: none; }
+.vocab-num { font-size: 36px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.vocab-num > span { font-size: 16px; font-weight: 600; margin-left: 2px; }
+.vocab-num > em { font-style: normal; font-size: 16px; font-weight: 700; margin-left: 8px; vertical-align: middle; }
+.vocab-num > em.up { color: var(--good); }
+.vocab-num > em.down { color: var(--ink-3); }
+.vocab-meter { margin-top: 10px; }
+.vocab-summary { margin: 18px auto 0; max-width: 420px; background: var(--surface-2); border-radius: 14px; padding: 14px 16px; }
+.forecast-rows { display: grid; gap: 6px; font-size: 14.5px; }
+.forecast-rows b { font-variant-numeric: tabular-nums; }
+.quick-tag { font-size: 11px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 6px; padding: 1px 6px; margin-right: 6px; }

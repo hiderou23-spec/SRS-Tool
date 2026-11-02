@@ -6,7 +6,7 @@
 import { db, getSettings } from '../db/db';
 import type { RatingValue, ReviewCard, ReviewLogEntry, StudySession } from '../db/types';
 import { dayKey, nowIso, uid } from '../lib/util';
-import { planQueue, type QueuePlan, DEFAULT_SECONDS_PER_REVIEW } from './queue';
+import { planQueue, type QueuePlan, DEFAULT_SECONDS_PER_REVIEW, QUICK_MINUTES } from './queue';
 import { retrievability, schedule, State } from './scheduler';
 
 /** Per-card active time cap so an idle screen doesn't inflate stats. */
@@ -79,6 +79,36 @@ export async function startOrResumeSession(minutes?: number, now = new Date()): 
     reviewedCount: 0,
     newCount: 0,
     day: inp.today,
+  };
+  await db.sessions.put(session);
+  return session;
+}
+
+/**
+ * 1-minute mode: a fresh, very short session. An open session from earlier
+ * today is closed first; nothing is lost because every answer is already
+ * saved and its unanswered cards stay due.
+ */
+export async function startQuickSession(now = new Date()): Promise<StudySession> {
+  const inp = await loadPlanInputs(now);
+  const existing = await getActiveSession(inp.today);
+  if (existing) {
+    existing.endedAt = now.toISOString();
+    await db.sessions.put(existing);
+  }
+  const plan = planQueue({ ...inp, now, minutes: QUICK_MINUTES });
+  const session: StudySession = {
+    id: uid(),
+    startedAt: now.toISOString(),
+    endedAt: null,
+    targetMinutes: QUICK_MINUTES,
+    activeMs: 0,
+    queue: plan.queue,
+    done: [],
+    reviewedCount: 0,
+    newCount: 0,
+    day: inp.today,
+    quick: true,
   };
   await db.sessions.put(session);
   return session;

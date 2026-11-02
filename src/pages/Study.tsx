@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { db } from '../db/db';
 import type { Example, Expression, RatingValue, ReviewCard, StudySession } from '../db/types';
-import { answerCard, excludeExpression, extendSession, finishSession, restoreExpression, startOrResumeSession, undoLast, getActiveSession } from '../srs/session';
+import { answerCard, excludeExpression, extendSession, finishSession, restoreExpression, startOrResumeSession, startQuickSession, undoLast, getActiveSession } from '../srs/session';
 import { previewIntervals } from '../srs/scheduler';
 import { useSettings } from '../lib/hooks';
 import { hashParams, navigate } from '../lib/router';
@@ -12,6 +12,7 @@ import { pickExample } from '../srs/rotation';
 import { highlight } from '../components/Highlight';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { encouragementFor } from '../lib/encouragement';
+import { VocabSessionSummary } from '../components/Vocab';
 
 const RATINGS: { v: RatingValue; label: string; cls: string }[] = [
   { v: 1, label: 'Again', cls: 'again' },
@@ -89,9 +90,13 @@ export default function Study() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const extra = hashParams().get('extra');
+      const params = hashParams();
+      const extra = params.get('extra');
       let s: StudySession;
-      if (extra) {
+      if (params.get('quick')) {
+        s = await startQuickSession();
+        history.replaceState(null, '', '#/study');
+      } else if (extra) {
         const active = await getActiveSession();
         s = active ? await extendSession(active.id, 5) : await startOrResumeSession(5);
         if (s.queue.length === 0) s = await extendSession(s.id, 5);
@@ -239,7 +244,7 @@ export default function Study() {
       <div className="study-progress">
         <div className="meter"><div style={{ width: `${progressPct}%` }} /></div>
         <div className="tiny row between">
-          <span>{minutes}:{String(seconds).padStart(2, '0')} / {session.targetMinutes}:00</span>
+          <span>{session.quick && session.targetMinutes === 1 && <b className="quick-tag">1分モード</b>}{minutes}:{String(seconds).padStart(2, '0')} / {session.targetMinutes}:00</span>
           <span>残り {session.queue.length}</span>
         </div>
       </div>
@@ -257,6 +262,7 @@ export default function Study() {
           <p className="muted" style={{ margin: 0 }}>
             {session.reviewedCount}件の復習・{session.newCount}件の新しい表現 / {Math.round(session.activeMs / 60000)}分
           </p>
+          <VocabSessionSummary sessionId={session.id} />
           <Encouragement sessionId={session.id} />
           <p className="tiny muted">次回の復習日はFSRSが自動で決めています。</p>
         </div>
@@ -370,7 +376,8 @@ export default function Study() {
         <div className="sheet-backdrop">
           <div className="sheet center">
             <div style={{ fontSize: 40 }}>🎉</div>
-            <h2 style={{ margin: '4px 0 6px' }}>今日の{session.targetMinutes}分が完了しました</h2>
+            <h2 style={{ margin: '4px 0 6px' }}>{session.quick && session.targetMinutes === 1 ? '1分完了。今日もつながりました' : `今日の${session.targetMinutes}分が完了しました`}</h2>
+            <VocabSessionSummary sessionId={session.id} />
             <Encouragement sessionId={session.id} />
             <p className="muted tiny" style={{ margin: '10px 0 0' }}>ここで終えても大丈夫です。残りは明日以降に自動で回ります。</p>
             <div className="stack" style={{ marginTop: 18 }}>
