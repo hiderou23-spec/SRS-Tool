@@ -7,8 +7,10 @@ import { useSettings } from '../lib/hooks';
 import { hashParams, navigate } from '../lib/router';
 import { formatInterval } from '../lib/util';
 import { IconChevron, IconClose, IconUndo } from '../components/Icons';
-import { PronunciationView, QualityChip } from '../components/Pronunciation';
+import { PronunciationView } from '../components/Pronunciation';
 import { pickExample } from '../srs/rotation';
+import { highlight } from '../components/Highlight';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { encouragementFor } from '../lib/encouragement';
 
 const RATINGS: { v: RatingValue; label: string; cls: string }[] = [
@@ -20,22 +22,6 @@ const RATINGS: { v: RatingValue; label: string; cls: string }[] = [
 
 const KIND_LABEL: Record<string, string> = { business: 'Business', daily: 'Daily', alternative: 'Alternative' };
 
-/** Highlight the expression (allowing simple inflections) inside an example sentence. */
-export function highlight(sentence: string, expr: string) {
-  const words = expr.replace(/[~〜(（].*$/, '').trim().split(/\s+/).filter((w) => /^[a-z'-]+$/i.test(w));
-  if (words.length === 0) return sentence;
-  const pattern = words.map((w, i) => (i === 0 && w.length > 2 ? w.replace(/e$/i, '') + "[a-z']*" : w.replace(/[-']/g, '\\$&') + "[a-z']{0,3}")).join('\\s+');
-  const m = new RegExp(`\\b(${pattern})\\b`, 'i').exec(sentence);
-  if (!m) return sentence;
-  return (
-    <>
-      {sentence.slice(0, m.index)}
-      <span className="mark">{m[0]}</span>
-      {sentence.slice(m.index + m[0].length)}
-    </>
-  );
-}
-
 function ExampleBlock({ ex, expr, open, onToggle, hideJa }: { ex: Example; expr: string; open: boolean; onToggle: () => void; hideJa?: boolean }) {
   const settings = useSettings();
   return (
@@ -44,13 +30,13 @@ function ExampleBlock({ ex, expr, open, onToggle, hideJa }: { ex: Example; expr:
       {ex.ja && !hideJa && <div className="ja">{ex.ja}</div>}
       <div className="meta">
         <span className="chip">{KIND_LABEL[ex.kind]}</span>
-        {ex.origin === 'ai' && <QualityChip status={ex.status} origin="ai" />}
+        {ex.origin === 'ai' && ex.status !== 'verified' && <span className="ai-tag" title="AIが作成（未確認）">AI</span>}
       </div>
       <button className="disclosure" aria-expanded={open} onClick={onToggle}>
         <span>発音ガイド{ex.pronunciation ? '' : '（未登録）'}</span>
         <IconChevron />
       </button>
-      {open && <PronunciationView guide={ex.pronunciation} sentence={ex.en} settings={settings} />}
+      {open && <PronunciationView guide={ex.pronunciation} sentence={ex.en} settings={settings} compact />}
     </div>
   );
 }
@@ -76,6 +62,8 @@ export default function Study() {
   const [showComplete, setShowComplete] = useState(false);
   const [completeDismissed, setCompleteDismissed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const totalAnswers = useLiveQuery(() => db.logs.count(), []);
   const [excluded, setExcluded] = useState<{ id: string; text: string; prevQueue: string[] } | null>(null);
   const [, tick] = useState(0);
 
@@ -147,6 +135,7 @@ export default function Study() {
       setRevealed(false);
       setMoreOpen(false);
       setPronOpen(null);
+      setMenuOpen(false);
       cardStart.current = Date.now();
       cardAccum.current = 0;
     })();
@@ -290,11 +279,14 @@ export default function Study() {
   const meaningHint = expr.meaning || expr.ai?.meaning;
   const prompt = sentenceMode ? mainEx!.ja : expr.productionPrompt || meaningHint || '（日本語訳が未登録です）';
   const isNew = card.introducedAt === null;
+  const hasAi =
+    (!isProd && !!expr.ai?.meaning) ||
+    [mainEx, ...(moreOpen ? others : [])].some((e) => e && e.origin === 'ai' && e.status !== 'verified');
 
   return (
     <div className="study">
       {top}
-      <div className="study-body" onClick={() => !revealed && setRevealed(true)}>
+      <div className={revealed ? 'study-body' : 'study-body asking'} onClick={() => !revealed && setRevealed(true)}>
         <div className="mode-label">
           {sentenceMode ? 'Speaking · この文を英語で言う' : isProd ? 'Speaking · 英語で言ってみる' : 'Reading · 意味を思い出す'}
           {isNew && <span className="chip accent" style={{ marginLeft: 8 }}>NEW</span>}
@@ -317,8 +309,7 @@ export default function Study() {
             {!isProd && (expr.meaning ? <p className="meaning">{expr.meaning}</p> : !expr.ai?.meaning && <p className="meaning muted">日本語訳が未登録です</p>)}
             {!isProd && expr.ai?.meaning && (
               <div style={{ marginTop: expr.meaning ? 12 : 0 }}>
-                <p className={expr.meaning ? 'small' : 'meaning'} style={{ whiteSpace: 'pre-line', margin: 0, color: expr.meaning ? 'var(--ink-2)' : undefined }}>{expr.ai.meaning}</p>
-                <span className="chip warn" style={{ marginTop: 6 }}>AI訳・未検証</span>
+                <p className={expr.meaning ? 'small' : 'meaning'} style={{ whiteSpace: 'pre-line', margin: 0, color: expr.meaning ? 'var(--ink-2)' : undefined }}>{expr.ai.meaning} <span className="ai-tag" title="AIが作成した訳（未確認）">AI</span></p>
               </div>
             )}
 
@@ -337,12 +328,18 @@ export default function Study() {
             )}
 
             {expr.notes && <p className="small muted" style={{ whiteSpace: 'pre-line', marginTop: 18 }}>{expr.notes}</p>}
+            {hasAi && <p className="tiny muted" style={{ marginTop: 16 }}><span className="ai-tag">AI</span> はAIが作った内容です（未確認）。気になったら編集で直せます。</p>}
           </div>
         )}
 
         <div className="row study-actions" onClick={(e) => e.stopPropagation()}>
-          {revealed && <a className="btn ghost sm" href={`#/library/${expr.id}`}>編集</a>}
-          <button className="btn ghost sm muted-btn" disabled={busy} onClick={exclude}>学習から外す</button>
+          <button className="btn ghost sm muted-btn" aria-expanded={menuOpen} aria-label="その他の操作" onClick={() => setMenuOpen(!menuOpen)}>⋯ その他</button>
+          {menuOpen && (
+            <>
+              <a className="btn ghost sm" href={`#/library/${expr.id}`}>編集</a>
+              <button className="btn ghost sm danger" disabled={busy} onClick={exclude}>学習から外す</button>
+            </>
+          )}
         </div>
       </div>
 
@@ -353,6 +350,10 @@ export default function Study() {
             {isProd ? '英文を見る' : '答えを見る'}
           </button>
         ) : (
+          <>
+          {totalAnswers !== undefined && totalAnswers < 30 && (
+            <p className="rating-hint">下の数字は「次にこのカードが出るまで」の間隔です。迷ったら Good。</p>
+          )}
           <div className="ratings">
             {RATINGS.map(({ v, label, cls }) => (
               <button key={v} className={`rate ${cls}`} disabled={busy} onClick={() => answer(v)}>
@@ -361,6 +362,7 @@ export default function Study() {
               </button>
             ))}
           </div>
+          </>
         )}
       </div>
 

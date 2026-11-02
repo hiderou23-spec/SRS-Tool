@@ -7,7 +7,7 @@ export function QualityChip({ status, origin }: { status: string; origin?: strin
   return <span className={'chip ' + (status === 'verified' ? 'accent' : 'warn')}>{label}</span>;
 }
 
-export function PronunciationView({ guide, sentence, settings }: { guide?: PronunciationGuide; sentence: string; settings: Settings }) {
+export function PronunciationView({ guide, sentence, settings, compact }: { guide?: PronunciationGuide; sentence: string; settings: Settings; compact?: boolean }) {
   if (!guide) {
     return <div className="pron small muted">この例文の発音ガイドはまだありません。編集画面から AI で生成するか、手動で入力できます。</div>;
   }
@@ -18,9 +18,11 @@ export function PronunciationView({ guide, sentence, settings }: { guide?: Pronu
   ];
   return (
     <div className="pron">
-      <div className="row between" style={{ marginBottom: 8 }}>
-        <QualityChip status={guide.status} origin={guide.origin} />
-      </div>
+      {!compact && (
+        <div className="row between" style={{ marginBottom: 8 }}>
+          <QualityChip status={guide.status} origin={guide.origin} />
+        </div>
+      )}
       {levels.map(({ lv, d }) => (
         <div className="pron-level" key={lv}>
           <div className="lv">{lv}</div>

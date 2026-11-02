@@ -29,6 +29,23 @@ function stage(c?: ReviewCard): 'new' | 'learning' | 'established' {
 
 const PAGE = 80;
 
+const STAGE_JA: Record<string, string> = { new: '未学習', learning: '学習中', established: '定着' };
+
+/**
+ * Short meaning for the list. Imported dictionary text can be long and noisy
+ * (brackets, usage labels, English definitions); when the AI meaning exists it
+ * reads better in a one-line preview. The stored meaning is never changed.
+ */
+function previewMeaning(e: { meaning: string; ai?: { meaning?: string } }): string {
+  const m = e.meaning.trim();
+  const noisy = !m || m.length > 40 || /[〔〕〈〉◆【】]/.test(m) || !/[\u3040-\u30ff\u4e00-\u9fff]/.test(m);
+  if (noisy && e.ai?.meaning) return e.ai.meaning.split('\n')[0];
+  const first = m.split('\n')[0];
+  // Display-only tidy-up of dictionary labels and dangling bracket fragments.
+  const tidy = first.replace(/^[^〔]*〕/, '').replace(/〈[^〉]*〉|【[^】]*】/g, '').replace(/◆.*$/, '').replace(/\s{2,}/g, ' ').trim();
+  return tidy || first || '— 訳なし —';
+}
+
 export default function Library() {
   const data = useLiveQuery(async () => {
     const [exprs, cards] = await Promise.all([db.expressions.toArray(), db.cards.toArray()]);
@@ -119,11 +136,11 @@ export default function Library() {
               <a key={e.id} className="list-item lib-item" href={`#/library/${e.id}`}>
                 <div className="grow">
                   <div className="t" style={{ opacity: e.suspended ? 0.45 : 1 }}>{e.text || <span className="muted">（未入力）</span>}</div>
-                  <div className="m">{e.meaning || (e.ai?.meaning ? `AI訳: ${e.ai.meaning}` : '— 訳なし —')}</div>
+                  <div className="m">{previewMeaning(e)}</div>
                 </div>
-                <div className="row" style={{ gap: 4 }} title="Reading / Speaking">
-                  <span className={'dot ' + (sr === 'established' ? 'on' : sr === 'learning' ? 'half' : '')} />
-                  <span className={'dot ' + (sp === 'established' ? 'on' : sp === 'learning' ? 'half' : '')} />
+                <div className="row" style={{ gap: 4 }} aria-label={`Reading ${STAGE_JA[sr]}・Speaking ${STAGE_JA[sp]}`}>
+                  <span className={'stage ' + sr}>R</span>
+                  {e.lang !== 'ja' && <span className={'stage ' + sp}>S</span>}
                 </div>
               </a>
             );
@@ -133,7 +150,7 @@ export default function Library() {
       {results.length > limit && (
         <button className="btn block" onClick={() => setLimit(limit + PAGE * 2)}>さらに表示（残り {results.length - limit}件）</button>
       )}
-      <p className="tiny muted center" style={{ marginTop: 12 }}>● 左: Reading　● 右: Speaking（薄い=学習中・濃い=定着）</p>
+      <p className="tiny muted center" style={{ marginTop: 12 }}>R = Reading・S = Speaking（枠のみ=未学習・薄い色=学習中・濃い色=定着）</p>
     </main>
   );
 }

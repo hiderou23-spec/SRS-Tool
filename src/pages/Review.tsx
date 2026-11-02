@@ -54,12 +54,12 @@ export default function Review() {
       <div className="row" style={{ marginBottom: 4 }}>
         <button className="icon-btn" style={{ marginLeft: -10 }} onClick={() => navigate('settings')} aria-label="戻る"><IconBack /></button>
       </div>
-      <h1 className="page-title">AIコンテンツの確認</h1>
-      <p className="page-sub">重要度の高い順。問題なければ「OK」、直したい時は「編集」。</p>
+      <h1 className="page-title">AIの内容を見直す</h1>
+      <p className="page-sub">全部を確認する必要はありません。時間がある時に、重要度の高いものから「OK」か「編集」を。</p>
       <div className="seg" style={{ marginBottom: 14 }}>
         {TABS.map((t) => <button key={t.k} aria-pressed={tab === t.k} onClick={() => { setTab(t.k); setLimit(PAGE); }}>{t.label}</button>)}
       </div>
-      {list.length === 0 && <p className="muted center">確認待ちはありません。</p>}
+      {list.length === 0 && <p className="muted center">見直す内容はありません。</p>}
       {list.slice(0, limit).map((e) => (
         <div key={e.id} className="card">
           <div className="row between" style={{ marginBottom: 6 }}>
