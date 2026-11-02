@@ -218,6 +218,9 @@ a { color: var(--accent); }
 .pron-level .k { font-size: 15px; color: var(--ink-2); margin-top: 2px; }
 .pron-level .i { font-family: 'Charis SIL', 'Doulos SIL', 'Lucida Grande', var(--serif); font-size: 15px; color: var(--ink-2); margin-top: 2px; }
 
+.study-actions { margin-top: 18px; gap: 4px; }
+.btn.ghost.muted-btn { color: var(--ink-3); }
+.excluded-bar { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 0.5px solid var(--line); border-radius: 12px; padding: 8px 8px 8px 14px; margin-bottom: 10px; font-size: 14px; }
 .ratings { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .rate { min-height: 64px; border-radius: 14px; border: 0.5px solid var(--line); background: var(--surface); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 4px; }
 .rate b { font-size: 15px; }

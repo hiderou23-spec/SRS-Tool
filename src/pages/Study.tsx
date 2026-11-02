@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { db } from '../db/db';
 import type { Example, Expression, RatingValue, ReviewCard, StudySession } from '../db/types';
-import { answerCard, extendSession, finishSession, startOrResumeSession, undoLast, getActiveSession } from '../srs/session';
+import { answerCard, excludeExpression, extendSession, finishSession, restoreExpression, startOrResumeSession, undoLast, getActiveSession } from '../srs/session';
 import { previewIntervals } from '../srs/scheduler';
 import { useSettings } from '../lib/hooks';
 import { hashParams, navigate } from '../lib/router';
@@ -64,6 +64,7 @@ export default function Study() {
   const [showComplete, setShowComplete] = useState(false);
   const [completeDismissed, setCompleteDismissed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [excluded, setExcluded] = useState<{ id: string; text: string; prevQueue: string[] } | null>(null);
   const [, tick] = useState(0);
 
   // Active-time tracking for the current card (paused while the app is hidden).
@@ -153,6 +154,7 @@ export default function Study() {
       setBusy(true);
       try {
         const res = await answerCard(session.id, card.id, r, cardElapsed());
+        setExcluded(null);
         setSession({ ...res.session });
         if (!completeDismissed && res.session.activeMs >= targetMs && res.session.queue.length > 0) setShowComplete(true);
       } finally {
@@ -160,6 +162,33 @@ export default function Study() {
       }
     },
     [session, card, busy, completeDismissed, targetMs],
+  );
+
+  const exclude = async () => {
+    if (!session || !expr || busy) return;
+    setBusy(true);
+    try {
+      const res = await excludeExpression(session.id, expr.id);
+      if (!res) return;
+      setExcluded({ id: expr.id, text: expr.text || expr.meaning, prevQueue: res.prevQueue });
+      setSession({ ...res.session });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const restore = async () => {
+    if (!session || !excluded) return;
+    const s = await restoreExpression(session.id, excluded.id, excluded.prevQueue);
+    setExcluded(null);
+    if (s) setSession({ ...s });
+  };
+
+  const excludedBar = excluded && (
+    <div className="excluded-bar" role="status">
+      <span className="grow">「{excluded.text}」を学習から外しました</span>
+      <button className="btn sm" onClick={restore}>元に戻す</button>
+    </div>
   );
 
   const undo = async () => {
@@ -230,6 +259,7 @@ export default function Study() {
           <p className="small muted">次回の復習日はFSRSが自動で決めています。</p>
         </div>
         <div className="study-bottom stack">
+          {excludedBar}
           <button className="btn primary block lg" onClick={end}>終了する</button>
           <button className="btn block" onClick={() => extend(5)}>あと5分続ける</button>
         </div>
@@ -289,14 +319,17 @@ export default function Study() {
             )}
 
             {expr.notes && <p className="small muted" style={{ whiteSpace: 'pre-line', marginTop: 18 }}>{expr.notes}</p>}
-            <div className="row" style={{ marginTop: 18 }}>
-              <a className="btn ghost sm" href={`#/library/${expr.id}`}>編集</a>
-            </div>
           </div>
         )}
+
+        <div className="row study-actions" onClick={(e) => e.stopPropagation()}>
+          {revealed && <a className="btn ghost sm" href={`#/library/${expr.id}`}>編集</a>}
+          <button className="btn ghost sm muted-btn" disabled={busy} onClick={exclude}>学習から外す</button>
+        </div>
       </div>
 
       <div className="study-bottom">
+        {excludedBar}
         {!revealed ? (
           <button className="btn primary block lg" onClick={() => setRevealed(true)}>
             {isProd ? '英文を見る' : '答えを見る'}

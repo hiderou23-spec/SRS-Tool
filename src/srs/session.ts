@@ -165,6 +165,42 @@ export async function answerCard(
   });
 }
 
+/**
+ * Take an expression out of study from the study screen. Nothing is deleted:
+ * the expression is only marked suspended (same as the Library toggle), its
+ * review history is kept, and its cards leave today's queue. Returns the queue
+ * as it was so the action can be undone.
+ */
+export async function excludeExpression(sessionId: string, expressionId: string): Promise<{ session: StudySession; prevQueue: string[] } | null> {
+  return db.transaction('rw', db.expressions, db.sessions, async () => {
+    const session = await db.sessions.get(sessionId);
+    const expr = await db.expressions.get(expressionId);
+    if (!session || !expr) return null;
+    await db.expressions.put({ ...expr, suspended: true, updatedAt: nowIso() });
+    const prevQueue = [...session.queue];
+    session.queue = session.queue.filter((id) => !id.startsWith(`${expressionId}:`));
+    await db.sessions.put(session);
+    return { session, prevQueue };
+  });
+}
+
+/** Undo excludeExpression: back into study and back into today's queue. */
+export async function restoreExpression(sessionId: string, expressionId: string, prevQueue: string[]): Promise<StudySession | null> {
+  return db.transaction('rw', db.expressions, db.sessions, async () => {
+    const session = await db.sessions.get(sessionId);
+    const expr = await db.expressions.get(expressionId);
+    if (!session || !expr) return null;
+    await db.expressions.put({ ...expr, suspended: false, updatedAt: nowIso() });
+    const current = new Set(session.queue);
+    // Restore the excluded cards at their original positions; keep any other changes.
+    const restored = prevQueue.filter((id) => current.has(id) || id.startsWith(`${expressionId}:`));
+    session.queue = [...restored, ...session.queue.filter((id) => !restored.includes(id))];
+    session.endedAt = null;
+    await db.sessions.put(session);
+    return session;
+  });
+}
+
 /** Undo the most recent answer in this session. */
 export async function undoLast(sessionId: string): Promise<StudySession | null> {
   return db.transaction('rw', db.cards, db.logs, db.sessions, async () => {
