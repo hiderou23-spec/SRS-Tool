@@ -9,6 +9,7 @@ import { formatInterval } from '../lib/util';
 import { IconChevron, IconClose, IconUndo } from '../components/Icons';
 import { PronunciationView, QualityChip } from '../components/Pronunciation';
 import { pickExample } from '../srs/rotation';
+import { encouragementFor } from '../lib/encouragement';
 
 const RATINGS: { v: RatingValue; label: string; cls: string }[] = [
   { v: 1, label: 'Again', cls: 'again' },
@@ -50,6 +51,16 @@ function ExampleBlock({ ex, expr, open, onToggle, hideJa }: { ex: Example; expr:
         <IconChevron />
       </button>
       {open && <PronunciationView guide={ex.pronunciation} sentence={ex.en} settings={settings} />}
+    </div>
+  );
+}
+
+function Encouragement({ sessionId }: { sessionId: string }) {
+  const { message, tip } = useMemo(() => encouragementFor(sessionId), [sessionId]);
+  return (
+    <div className="encourage">
+      <p className="msg">{message}</p>
+      <div className="tip"><span className="tip-label">Tips</span>{tip}</div>
     </div>
   );
 }
@@ -257,7 +268,8 @@ export default function Study() {
           <p className="muted" style={{ margin: 0 }}>
             {session.reviewedCount}件の復習・{session.newCount}件の新しい表現 / {Math.round(session.activeMs / 60000)}分
           </p>
-          <p className="small muted">次回の復習日はFSRSが自動で決めています。</p>
+          <Encouragement sessionId={session.id} />
+          <p className="tiny muted">次回の復習日はFSRSが自動で決めています。</p>
         </div>
         <div className="study-bottom stack">
           {excludedBar}
@@ -357,7 +369,8 @@ export default function Study() {
           <div className="sheet center">
             <div style={{ fontSize: 40 }}>🎉</div>
             <h2 style={{ margin: '4px 0 6px' }}>今日の{session.targetMinutes}分が完了しました</h2>
-            <p className="muted small">ここで終えても大丈夫です。残りは明日以降に自動で回ります。</p>
+            <Encouragement sessionId={session.id} />
+            <p className="muted tiny" style={{ margin: '10px 0 0' }}>ここで終えても大丈夫です。残りは明日以降に自動で回ります。</p>
             <div className="stack" style={{ marginTop: 18 }}>
               <button className="btn primary block lg" onClick={end}>今日はここまで</button>
               <button className="btn block" onClick={() => { setShowComplete(false); setCompleteDismissed(true); }}>キューの残りを続ける（{session.queue.length}件）</button>

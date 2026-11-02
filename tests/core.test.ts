@@ -9,6 +9,7 @@ import { answerCard, startOrResumeSession, undoLast, previewToday, excludeExpres
 import { createBackup, restoreBackup, validateBackup, buildCsv } from '../src/lib/backup';
 import { planQueue } from '../src/srs/queue';
 import { pickExample } from '../src/srs/rotation';
+import { pick, MESSAGES, TIPS } from '../src/lib/encouragement';
 import type { Example } from '../src/db/types';
 
 let n = 0;
@@ -214,5 +215,19 @@ describe('example rotation', () => {
     expect(pickExample(mixed, card(2, true), hasJa).main?.kind).toBe('business');
     expect(pickExample([ex('daily', '')], card(0, false), hasJa).main).toBeUndefined();
     expect(pickExample([], card(0, false)).main).toBeUndefined();
+  });
+});
+
+describe('encouragement', () => {
+  it('goes round every message and tip before repeating', () => {
+    const msgs = new Set<string>(), tips = new Set<string>();
+    for (let i = 0; i < MESSAGES.length; i++) msgs.add(pick(i).message);
+    for (let i = 0; i < TIPS.length; i++) tips.add(pick(i).tip);
+    expect(msgs.size).toBe(MESSAGES.length);
+    expect(tips.size).toBe(TIPS.length);
+    for (let i = 0; i < 100; i++) {
+      expect(pick(i).message).not.toBe(pick(i + 1).message);
+      expect(pick(i).tip).not.toBe(pick(i + 1).tip);
+    }
   });
 });
