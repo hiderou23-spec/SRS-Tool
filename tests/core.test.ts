@@ -8,6 +8,8 @@ import { DEFAULT_SETTINGS, type ImportMapping } from '../src/db/types';
 import { answerCard, startOrResumeSession, undoLast, previewToday, excludeExpression, restoreExpression } from '../src/srs/session';
 import { createBackup, restoreBackup, validateBackup, buildCsv } from '../src/lib/backup';
 import { planQueue } from '../src/srs/queue';
+import { pickExample } from '../src/srs/rotation';
+import type { Example } from '../src/db/types';
 
 let n = 0;
 beforeEach(async () => {
@@ -186,5 +188,31 @@ describe('session', () => {
     expect(plan.newSuppressed).toBe(true);
     const p = await previewToday();
     expect(p.newInQueue).toBeGreaterThan(0);
+  });
+});
+
+describe('example rotation', () => {
+  const ex = (kind: Example['kind'], ja = 'x'): Example => ({ id: kind, kind, en: kind, ja, origin: 'ai', status: 'unverified' });
+  const card = (reps: number, introduced: boolean) => ({ fsrs: { reps } as never, introducedAt: introduced ? '2026-01-01' : null });
+  // Stored out of order on purpose.
+  const examples = [ex('daily'), ex('alternative'), ex('business')];
+
+  it('shows business first, then rotates with each review', () => {
+    expect(pickExample(examples, card(0, false)).main?.kind).toBe('business');
+    expect(pickExample(examples, card(1, true)).main?.kind).toBe('daily');
+    expect(pickExample(examples, card(2, true)).main?.kind).toBe('alternative');
+    expect(pickExample(examples, card(3, true)).main?.kind).toBe('business');
+    const { main, others } = pickExample(examples, card(1, true));
+    expect(others.map((e) => e.kind)).toEqual(['business', 'alternative']);
+    expect(others).not.toContain(main);
+  });
+
+  it('Speaking only uses examples with a Japanese translation, and falls back when none', () => {
+    const mixed = [ex('business'), ex('daily', ''), ex('alternative')];
+    const hasJa = (e: Example) => !!e.ja.trim();
+    expect(pickExample(mixed, card(1, true), hasJa).main?.kind).toBe('alternative');
+    expect(pickExample(mixed, card(2, true), hasJa).main?.kind).toBe('business');
+    expect(pickExample([ex('daily', '')], card(0, false), hasJa).main).toBeUndefined();
+    expect(pickExample([], card(0, false)).main).toBeUndefined();
   });
 });

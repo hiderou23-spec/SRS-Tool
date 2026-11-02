@@ -8,6 +8,7 @@ import { hashParams, navigate } from '../lib/router';
 import { formatInterval } from '../lib/util';
 import { IconChevron, IconClose, IconUndo } from '../components/Icons';
 import { PronunciationView, QualityChip } from '../components/Pronunciation';
+import { pickExample } from '../srs/rotation';
 
 const RATINGS: { v: RatingValue; label: string; cls: string }[] = [
   { v: 1, label: 'Again', cls: 'again' },
@@ -34,12 +35,12 @@ export function highlight(sentence: string, expr: string) {
   );
 }
 
-function ExampleBlock({ ex, expr, open, onToggle }: { ex: Example; expr: string; open: boolean; onToggle: () => void }) {
+function ExampleBlock({ ex, expr, open, onToggle, hideJa }: { ex: Example; expr: string; open: boolean; onToggle: () => void; hideJa?: boolean }) {
   const settings = useSettings();
   return (
     <div className="example">
       <div className="en">{highlight(ex.en, expr)}</div>
-      {ex.ja && <div className="ja">{ex.ja}</div>}
+      {ex.ja && !hideJa && <div className="ja">{ex.ja}</div>}
       <div className="meta">
         <span className="chip">{KIND_LABEL[ex.kind]}</span>
         {ex.origin === 'ai' && <QualityChip status={ex.status} origin="ai" />}
@@ -270,9 +271,12 @@ export default function Study() {
   if (!card || !expr) return <div className="study">{top}</div>;
 
   const isProd = card.mode === 'production';
-  const examples = expr.examples;
-  const mainEx = examples[0];
-  const prompt = expr.productionPrompt || expr.meaning || expr.ai?.meaning || mainEx?.ja || '（日本語訳が未登録です）';
+  // Reading: rotate through all examples. Speaking: rotate through examples that
+  // have a Japanese translation, and ask for the whole sentence.
+  const { main: mainEx, others } = pickExample(expr.examples, card, isProd ? (e) => !!e.ja.trim() : undefined);
+  const sentenceMode = isProd && !!mainEx;
+  const meaningHint = expr.meaning || expr.ai?.meaning;
+  const prompt = sentenceMode ? mainEx!.ja : expr.productionPrompt || meaningHint || '（日本語訳が未登録です）';
   const isNew = card.introducedAt === null;
 
   return (
@@ -280,14 +284,16 @@ export default function Study() {
       {top}
       <div className="study-body" onClick={() => !revealed && setRevealed(true)}>
         <div className="mode-label">
-          {isProd ? 'Speaking · 英語で言ってみる' : 'Reading · 意味を思い出す'}
+          {sentenceMode ? 'Speaking · この文を英語で言う' : isProd ? 'Speaking · 英語で言ってみる' : 'Reading · 意味を思い出す'}
           {isNew && <span className="chip accent" style={{ marginLeft: 8 }}>NEW</span>}
         </div>
 
         {isProd ? (
           <>
-            <div className="expr prompt">{prompt}</div>
-            {expr.productionPrompt && expr.meaning && <p className="small muted" style={{ margin: 0 }}>{expr.meaning}</p>}
+            <div className={sentenceMode ? 'expr prompt sentence' : 'expr prompt'}>{prompt}</div>
+            {sentenceMode
+              ? meaningHint && <p className="small muted" style={{ margin: 0, whiteSpace: 'pre-line' }}>使う表現：{meaningHint.split('\n')[0]}</p>
+              : expr.productionPrompt && expr.meaning && <p className="small muted" style={{ margin: 0 }}>{expr.meaning}</p>}
           </>
         ) : (
           <div className="expr">{expr.text}</div>
@@ -304,15 +310,15 @@ export default function Study() {
               </div>
             )}
 
-            {mainEx && <ExampleBlock ex={mainEx} expr={expr.text} open={pronOpen === mainEx.id} onToggle={() => setPronOpen(pronOpen === mainEx.id ? null : mainEx.id)} />}
+            {mainEx && <ExampleBlock ex={mainEx} expr={expr.text} hideJa={sentenceMode} open={pronOpen === mainEx.id} onToggle={() => setPronOpen(pronOpen === mainEx.id ? null : mainEx.id)} />}
 
-            {examples.length > 1 && (
+            {others.length > 0 && (
               <>
                 <button className="disclosure" aria-expanded={moreOpen} onClick={() => setMoreOpen(!moreOpen)}>
-                  <span>他の例文（{examples.length - 1}）</span>
+                  <span>他の例文（{others.length}）</span>
                   <IconChevron />
                 </button>
-                {moreOpen && examples.slice(1).map((ex) => (
+                {moreOpen && others.map((ex) => (
                   <ExampleBlock key={ex.id} ex={ex} expr={expr.text} open={pronOpen === ex.id} onToggle={() => setPronOpen(pronOpen === ex.id ? null : ex.id)} />
                 ))}
               </>
