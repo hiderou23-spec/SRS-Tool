@@ -5,7 +5,7 @@ import { analyzeImport, commitImport, fileHashOf } from '../src/import/importer'
 import { cleanEnglish, cleanText, normalizeKey } from '../src/import/clean';
 import { schedule, newCardData, previewIntervals } from '../src/srs/scheduler';
 import { DEFAULT_SETTINGS, type ImportMapping } from '../src/db/types';
-import { answerCard, startOrResumeSession, undoLast, previewToday } from '../src/srs/session';
+import { answerCard, startOrResumeSession, undoLast, previewToday, excludeExpression, restoreExpression } from '../src/srs/session';
 import { createBackup, restoreBackup, validateBackup, buildCsv } from '../src/lib/backup';
 import { planQueue } from '../src/srs/queue';
 
@@ -115,6 +115,26 @@ describe('FSRS', () => {
 });
 
 describe('session', () => {
+  it('excludes an expression from study without deleting anything, and can undo', async () => {
+    await (await importCsv(CSV)).commit();
+    const session = await startOrResumeSession();
+    const cardId = session.queue[1];
+    const exprId = (await db.cards.get(cardId))!.expressionId;
+    const before = { exprs: await db.expressions.count(), cards: await db.cards.count() };
+
+    const res = await excludeExpression(session.id, exprId);
+    expect(res!.session.queue.some((id) => id.startsWith(exprId + ':'))).toBe(false);
+    expect((await db.expressions.get(exprId))!.suspended).toBe(true);
+    expect(await db.expressions.count()).toBe(before.exprs);
+    expect(await db.cards.count()).toBe(before.cards);
+    // A fresh plan no longer picks it.
+    expect((await previewToday()).queue.some((id) => id.startsWith(exprId + ':'))).toBe(false);
+
+    const restored = await restoreExpression(session.id, exprId, res!.prevQueue);
+    expect(restored!.queue).toEqual(session.queue);
+    expect((await db.expressions.get(exprId))!.suspended).toBe(false);
+  });
+
   it('answers persist, undo restores, backup roundtrip', async () => {
     await (await importCsv(CSV)).commit();
     const session = await startOrResumeSession();
