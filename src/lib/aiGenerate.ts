@@ -84,11 +84,12 @@ async function call<T>(schema: z.ZodType<T>, user: string): Promise<{ data: T; u
   const c = await client();
   const model = getAiModel();
   const { betaZodOutputFormat } = await import('@anthropic-ai/sdk/helpers/beta/zod');
+  // Claude Haiku has no server-side refusal fallback; send the parameter only to models that have it.
+  const fallback = model.startsWith('claude-haiku') ? {} : { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const };
   const res = await c.beta.messages.parse({
     model,
     max_tokens: 16000,
-    betas: ['server-side-fallback-2026-07-01'],
-    fallbacks: 'default',
+    ...fallback,
     system: SYSTEM,
     output_config: { effort: 'medium', format: betaZodOutputFormat(schema) },
     messages: [{ role: 'user', content: user }],
@@ -178,3 +179,58 @@ export async function bulkPronunciationCandidates(limit: number): Promise<{ expr
     .map((e) => ({ expressionId: e.id, exampleId: e.examples[0].id }));
 }
 
+
+const SuggestSchema = z.object({
+  suggestions: z
+    .array(
+      z.object({
+        text: z.string().describe('The English expression in its base form (e.g. "get buy-in", "circle back")'),
+        meaning_ja: z.string().describe('Concise natural Japanese meaning'),
+        why_ja: z.string().describe('One short Japanese sentence: why it is useful for this learner'),
+        category: z.enum(CATEGORIES),
+        importance: z.number().int().describe('0-100 for this learner'),
+        examples: z
+          .array(z.object({ kind: z.enum(['business', 'daily', 'alternative']), en: z.string(), ja: z.string() }))
+          .describe('Exactly 3: business, daily, alternative'),
+      }),
+    )
+    .describe('Candidates, best first'),
+});
+export type SuggestedItem = z.infer<typeof SuggestSchema>['suggestions'][number];
+
+export interface SuggestContext {
+  /** How many candidates to ask for (more than needed, duplicates are removed on the device). */
+  count: number;
+  /** Expressions already in the library (a sample: most important / most recent). */
+  library: string[];
+  /** Previously suggested, by the learner's decision. */
+  added: string[];
+  known: string[];
+  rejected: string[];
+  /** Earlier suggestions not yet decided (do not repeat). */
+  pending: string[];
+}
+
+/**
+ * Today's suggestions. Sends only expression texts (library sample and past
+ * decisions) — no meanings, notes, or review history.
+ */
+export async function suggestExpressions(ctx: SuggestContext): Promise<{ items: SuggestedItem[]; usage: GenerateUsage; model: string }> {
+  const list = (xs: string[]) => (xs.length ? xs.join(' | ') : '(none)');
+  const prompt = [
+    `Suggest ${ctx.count} English expressions this learner should add to their study list today.`,
+    'Choose expressions a native speaker really uses in meetings, emails and conversations about payments, products, finance and leadership, plus some everyday conversation.',
+    'Prefer multi-word expressions (phrasal verbs, collocations, idioms, set phrases) at upper-intermediate to advanced level. No basic words, no rare or literary phrases, no proper nouns.',
+    'Vary the categories within the list. Do not suggest anything in the lists below, or a trivial variant of it.',
+    '',
+    `Already in the learner's library: ${list(ctx.library)}`,
+    `Suggested before and still undecided: ${list(ctx.pending)}`,
+    `Suggested before and added (the learner liked these — similar level and style is good): ${list(ctx.added)}`,
+    `Suggested before but the learner already knew them (suggest slightly more advanced ones): ${list(ctx.known)}`,
+    `Suggested before but not wanted (avoid this kind): ${list(ctx.rejected)}`,
+    '',
+    'For each: the expression, a concise Japanese meaning, one Japanese sentence on why it is useful for this learner, category, importance, and 3 examples (business, daily, alternative) following the example-sentence rules.',
+  ].join('\n');
+  const { data, usage } = await call(SuggestSchema, prompt);
+  return { items: data.suggestions, usage, model: getAiModel() };
+}

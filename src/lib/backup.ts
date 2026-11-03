@@ -21,17 +21,22 @@ export interface BackupFile {
     rawRows: unknown[];
     duplicates: unknown[];
     settings: unknown[];
+    /** Added later; older backups don't have it. */
+    suggestions?: unknown[];
   };
 }
 
 const TABLES = ['expressions', 'cards', 'logs', 'sessions', 'imports', 'rawRows', 'duplicates', 'settings'] as const;
+/** Tables that older backups may not contain. */
+const OPTIONAL_TABLES = ['suggestions'] as const;
+const ALL_TABLES = [...TABLES, ...OPTIONAL_TABLES];
 
 export async function createBackup(): Promise<BackupFile> {
   const data = {} as BackupFile['data'];
-  await db.transaction('r', TABLES.map((t) => db.table(t)), async () => {
-    for (const t of TABLES) data[t] = await db.table(t).toArray();
+  await db.transaction('r', ALL_TABLES.map((t) => db.table(t)), async () => {
+    for (const t of ALL_TABLES) data[t] = await db.table(t).toArray();
   });
-  const counts = Object.fromEntries(TABLES.map((t) => [t, data[t].length]));
+  const counts = Object.fromEntries(ALL_TABLES.map((t) => [t, data[t]!.length]));
   return { format: BACKUP_FORMAT, schemaVersion: SCHEMA_VERSION, exportedAt: nowIso(), app: 'English Mastery', counts, data };
 }
 
@@ -53,10 +58,11 @@ export function validateBackup(obj: unknown): { ok: true; backup: BackupFile } |
 
 /** Replace all local data with the backup (atomic: on failure nothing changes). */
 export async function restoreBackup(backup: BackupFile): Promise<void> {
-  await db.transaction('rw', TABLES.map((t) => db.table(t)), async () => {
-    for (const t of TABLES) {
+  await db.transaction('rw', ALL_TABLES.map((t) => db.table(t)), async () => {
+    for (const t of ALL_TABLES) {
       await db.table(t).clear();
-      await db.table(t).bulkPut(backup.data[t] as never[]);
+      const rows = backup.data[t];
+      if (Array.isArray(rows)) await db.table(t).bulkPut(rows as never[]);
     }
   });
 }
