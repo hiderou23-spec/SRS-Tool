@@ -26,8 +26,16 @@ export const LIBRARY_SAMPLE = 300;
 /** At most this many past decisions per kind are sent. */
 export const HISTORY_SAMPLE = 80;
 
-/** Requests allowed per day (the first set plus "もう5語" after deciding all). */
+/** Default number of requests per day (the first set plus "もう5語" after deciding all). */
 export const MAX_BATCHES_PER_DAY = 3;
+/** Choices offered in Settings for requests per day. */
+export const BATCHES_PER_DAY_OPTIONS = [1, 2, 3, 5, 10] as const;
+
+/** Sanitised per-day limit from settings (falls back to the default). */
+export function batchesPerDay(value: number | undefined): number {
+  const n = Math.round(Number(value));
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, 20) : MAX_BATCHES_PER_DAY;
+}
 /** Share of a set already known that raises the level by one. */
 export const RAISE_LEVEL_KNOWN_SHARE = 0.8;
 
@@ -90,9 +98,9 @@ export function nextLevel(level: number, basis: string | undefined, past: Sugges
 }
 
 /** True when today's sets are all decided and another set may be requested. */
-export function canAskMore(today: Suggestion[]): boolean {
+export function canAskMore(today: Suggestion[], limit: number = MAX_BATCHES_PER_DAY): boolean {
   if (today.length === 0 || today.some((s) => s.status === 'pending')) return false;
-  return Math.max(...today.map(batchOf)) < MAX_BATCHES_PER_DAY;
+  return Math.max(...today.map(batchOf)) < batchesPerDay(limit);
 }
 
 const CATEGORIES: Category[] = ['business', 'daily', 'phrasal_verb', 'idiom', 'academic', 'technical', 'low_priority'];
@@ -165,7 +173,7 @@ export interface SuggestResult {
 /**
  * Ask the AI for today's suggestions. Without `more`, only when there are none
  * yet today; with `more`, another set after every earlier one is decided (up to
- * MAX_BATCHES_PER_DAY). The level goes up automatically when most of the last
+ * Settings.suggestionBatchesPerDay). The level goes up automatically when most of the last
  * set was already known.
  */
 export async function requestTodaysSuggestions(now = new Date(), opts: { more?: boolean } = {}): Promise<SuggestResult> {
@@ -173,7 +181,7 @@ export async function requestTodaysSuggestions(now = new Date(), opts: { more?: 
   const day = dayKey(now, settings.dayStartHour);
   const existing = await suggestionsForDay(day);
   if (existing.length > 0 && !opts.more) return { suggestions: existing, usage: null, level: levelInfo(settings.suggestionLevel).level, levelRaised: false };
-  if (opts.more && !canAskMore(existing)) throw new Error('今日の提案をすべて選んでから、もう一度お試しください');
+  if (opts.more && !canAskMore(existing, settings.suggestionBatchesPerDay)) throw new Error('今日の提案をすべて選んでから、もう一度お試しください');
   const batch = existing.length ? Math.max(...existing.map(batchOf)) + 1 : 1;
 
   const [expressions, past] = await Promise.all([db.expressions.toArray(), db.suggestions.toArray()]);

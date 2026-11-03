@@ -150,6 +150,20 @@ describe('suggestion level', () => {
     expect(canAskMore(set('d', 1, 5))).toBe(true);
     expect(canAskMore(set('d', MAX_BATCHES_PER_DAY, 5))).toBe(false);
   });
+  it('uses the per-day limit from settings', async () => {
+    expect(canAskMore(set('d', 3, 5), 5)).toBe(true);
+    expect(canAskMore(set('d', 1, 5), 1)).toBe(false);
+    expect(canAskMore(set('d', 3, 5), Number.NaN)).toBe(false); // broken value → default 3
+
+    await saveSettings({ suggestionBatchesPerDay: 1 });
+    aiItems = [item('e1 f')];
+    const [s] = (await requestTodaysSuggestions()).suggestions;
+    await decideSuggestion(s.id, 'rejected');
+    await expect(requestTodaysSuggestions(new Date(), { more: true })).rejects.toThrow();
+    await saveSettings({ suggestionBatchesPerDay: 2 });
+    aiItems = [item('g1 h')];
+    expect((await requestTodaysSuggestions(new Date(), { more: true })).suggestions).toHaveLength(2);
+  });
 
   it('end to end: all known → ask again → the level is raised and saved', async () => {
     await saveSettings({ suggestionLevel: 2 });

@@ -134,7 +134,7 @@ export function DailySuggestions({ paused }: { paused: boolean }) {
     .filter(([, n]) => n)
     .map(([l, n]) => `${l}${n}`)
     .join('・');
-  const more = canAskMore(today);
+  const more = canAskMore(today, settings.suggestionBatchesPerDay);
   const upcoming = nextLevel(settings.suggestionLevel, settings.suggestionLevelBasis, today);
   const levelSelect = (
     <label className="row tiny muted" style={{ gap: 6, marginTop: 12 }}>
