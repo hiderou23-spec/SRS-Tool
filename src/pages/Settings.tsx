@@ -7,6 +7,7 @@ import { useSettings, toast } from '../lib/hooks';
 import { addSampleDeck } from '../lib/sample';
 import { applyAiAssessment, validateAiFile } from '../lib/aiAssessment';
 import AiPanel from '../components/AiPanel';
+import { BATCHES_PER_DAY_OPTIONS, batchesPerDay } from '../lib/suggestions';
 import { IconRight } from '../components/Icons';
 
 function Toggle({ label, desc, checked, onChange }: { label: string; desc?: string; checked: boolean; onChange: (v: boolean) => void }) {
@@ -152,7 +153,18 @@ export default function SettingsPage() {
       <div className="section-title">AI 生成</div>
       <AiPanel />
       <div className="list">
-        <Toggle label="毎日のAI提案" desc="ホームに、仕事に合った表現を1日5語提案します（APIキーが必要）" checked={s.dailySuggestions} onChange={(v) => set({ dailySuggestions: v })} />
+        <Toggle label="毎日のAI提案" desc="ホームに、仕事に合った表現を5語ずつ提案します（APIキーが必要）" checked={s.dailySuggestions} onChange={(v) => set({ dailySuggestions: v })} />
+        {s.dailySuggestions && (
+          <label className="list-item">
+            <div className="grow">
+              <div>1日に頼める回数</div>
+              <div className="tiny muted">1回5語。全部選び終えると次を頼めます（1回 約$0.10・Opus）</div>
+            </div>
+            <select className="select" style={{ width: 'auto' }} value={batchesPerDay(s.suggestionBatchesPerDay)} onChange={(e) => set({ suggestionBatchesPerDay: Number(e.target.value) })}>
+              {BATCHES_PER_DAY_OPTIONS.map((n) => <option key={n} value={n}>{n}回（{n * 5}語）</option>)}
+            </select>
+          </label>
+        )}
         <Link href="#/review" label="AIの内容を見直す" />
       </div>
 

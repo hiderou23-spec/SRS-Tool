@@ -301,6 +301,8 @@ export interface Settings {
   suggestionLevel: number;
   /** The suggestion set last used to adjust the level automatically (`day#batch`). */
   suggestionLevelBasis?: string;
+  /** How many sets of AI suggestions can be requested per day (5 expressions each). */
+  suggestionBatchesPerDay: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -319,4 +321,5 @@ export const DEFAULT_SETTINGS: Settings = {
   dayStartHour: 4,
   dailySuggestions: true,
   suggestionLevel: 2,
+  suggestionBatchesPerDay: 3,
 };
