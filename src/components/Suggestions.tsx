@@ -1,9 +1,21 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { AI_MODELS, friendlyError, getAiModel, getApiKey } from '../lib/aiConfig';
-import { toast } from '../lib/hooks';
+import { toast, useSettings } from '../lib/hooks';
+import { saveSettings } from '../db/db';
 import { recordUsage } from './AiPanel';
-import { addSuggestion, decideSuggestion, DAILY_SUGGESTIONS, requestTodaysSuggestions, suggestionsForDay, todayKey } from '../lib/suggestions';
+import {
+  addSuggestion,
+  canAskMore,
+  decideSuggestion,
+  DAILY_SUGGESTIONS,
+  levelInfo,
+  nextLevel,
+  requestTodaysSuggestions,
+  SUGGESTION_LEVELS,
+  suggestionsForDay,
+  todayKey,
+} from '../lib/suggestions';
 import type { Suggestion } from '../db/types';
 
 /** Rough cost of one request (library sample + 8 candidates with examples). */
@@ -77,6 +89,7 @@ function Item({ s }: { s: Suggestion }) {
  */
 export function DailySuggestions({ paused }: { paused: boolean }) {
   const [loading, setLoading] = useState(false);
+  const settings = useSettings();
   const hasKey = !!getApiKey();
   const today = useLiveQuery(async () => suggestionsForDay(await todayKey()), []);
   if (today === undefined) return null;
@@ -92,12 +105,14 @@ export function DailySuggestions({ paused }: { paused: boolean }) {
     );
   }
 
-  const fetchNow = async () => {
+  const fetchNow = async (more = false) => {
     setLoading(true);
     try {
-      const { usage, suggestions } = await requestTodaysSuggestions();
+      const before = today.length;
+      const { usage, suggestions, level, levelRaised } = await requestTodaysSuggestions(new Date(), { more });
       if (usage) recordUsage(usage);
-      if (suggestions.length === 0) toast('新しい候補が見つかりませんでした。また明日お試しください');
+      if (levelRaised) toast(`知っている表現が多かったので、レベルを「${levelInfo(level).label}」に上げました`);
+      else if (suggestions.length === before) toast('新しい候補が見つかりませんでした。また明日お試しください');
     } catch (err) {
       toast(friendlyError(err));
     } finally {
@@ -106,6 +121,21 @@ export function DailySuggestions({ paused }: { paused: boolean }) {
   };
 
   const pending = today.filter((s) => s.status === 'pending').length;
+  const more = canAskMore(today);
+  const upcoming = nextLevel(settings.suggestionLevel, settings.suggestionLevelBasis, today);
+  const levelSelect = (
+    <label className="row tiny muted" style={{ gap: 6, marginTop: 12 }}>
+      <span>レベル</span>
+      <select
+        className="select sg-level"
+        value={levelInfo(settings.suggestionLevel).level}
+        onChange={(e) => saveSettings({ suggestionLevel: Number(e.target.value) })}
+      >
+        {SUGGESTION_LEVELS.map((l) => <option key={l.level} value={l.level}>{l.label}</option>)}
+      </select>
+      <span className="grow">「知ってる」が多いと自動で上がります</span>
+    </label>
+  );
   return (
     <div className="card">
       <div className="row between" style={{ alignItems: 'baseline' }}>
@@ -121,7 +151,7 @@ export function DailySuggestions({ paused }: { paused: boolean }) {
           <p className="small" style={{ margin: '10px 0 12px' }}>
             あなたの仕事に合った表現を{DAILY_SUGGESTIONS}語提案します。気に入ったものだけ追加してください。
           </p>
-          <button className="btn block" disabled={loading} onClick={fetchNow}>
+          <button className="btn block" disabled={loading} onClick={() => fetchNow()}>
             {loading ? '考えています…' : `今日の${DAILY_SUGGESTIONS}語を提案してもらう`}
           </button>
           <p className="tiny muted" style={{ margin: '8px 0 0' }}>
@@ -129,6 +159,17 @@ export function DailySuggestions({ paused }: { paused: boolean }) {
           </p>
         </>
       )}
+      {more && (
+        <div style={{ marginTop: 12 }}>
+          {upcoming.raised && (
+            <p className="small" style={{ margin: '0 0 8px' }}>知っている表現が多かったので、次はレベルを「{levelInfo(upcoming.level).label}」に上げて提案します。</p>
+          )}
+          <button className="btn block" disabled={loading} onClick={() => fetchNow(true)}>
+            {loading ? '考えています…' : `もう${DAILY_SUGGESTIONS}語提案してもらう（約$${estimateUsd().toFixed(2)}）`}
+          </button>
+        </div>
+      )}
+      {levelSelect}
       {today.length > 0 && (
         <p className="tiny muted" style={{ margin: '10px 0 0' }}>
           追加した表現は新しいカードとして、1日の新規上限の範囲で出題されます。例文と訳はAIが作成したもの（要確認）です。

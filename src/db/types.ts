@@ -267,6 +267,10 @@ export interface Suggestion {
   importance: number;
   examples: { kind: ExampleKind; en: string; ja: string }[];
   status: SuggestionStatus;
+  /** 1-based request number within the day (older rows: undefined = 1). */
+  batch?: number;
+  /** Difficulty level the set was requested at (see SUGGESTION_LEVELS). */
+  level?: number;
   /** Set when added to the library. */
   expressionId?: string;
   model?: string;
@@ -291,6 +295,10 @@ export interface Settings {
   dayStartHour: number;
   /** Show the daily AI suggestions card on Home (needs an API key). */
   dailySuggestions: boolean;
+  /** Difficulty of AI suggestions, 1 (中上級) – 4 (ネイティブ水準). */
+  suggestionLevel: number;
+  /** The suggestion set last used to adjust the level automatically (`day#batch`). */
+  suggestionLevelBasis?: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -308,4 +316,5 @@ export const DEFAULT_SETTINGS: Settings = {
   lastBackupAt: null,
   dayStartHour: 4,
   dailySuggestions: true,
+  suggestionLevel: 2,
 };
