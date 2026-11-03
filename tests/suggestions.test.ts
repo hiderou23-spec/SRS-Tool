@@ -12,7 +12,8 @@ vi.mock('../src/lib/aiGenerate', () => ({
   }),
 }));
 
-const { addSuggestion, buildContext, decideSuggestion, pickNew, requestTodaysSuggestions, DAILY_SUGGESTIONS } = await import('../src/lib/suggestions');
+const { addSuggestion, buildContext, canAskMore, decideSuggestion, nextLevel, pickNew, requestTodaysSuggestions, DAILY_SUGGESTIONS, MAX_BATCHES_PER_DAY } = await import('../src/lib/suggestions');
+const { getSettings, saveSettings } = await import('../src/db/db');
 const { createBackup, restoreBackup, validateBackup } = await import('../src/lib/backup');
 
 const item = (text: string, importance = 70): SuggestedItem => ({
@@ -111,6 +112,61 @@ describe('daily suggestions', () => {
     const ctx = buildContext([], await db.suggestions.toArray());
     expect(ctx.known).toEqual(['touch base']);
     expect(ctx.rejected).toEqual(['loop in']);
+  });
+});
+
+describe('suggestion level', () => {
+  const sg = (day: string, batch: number, status: Suggestion['status'], i = 0) =>
+    ({ id: `${day}-${batch}-${i}`, day, batch, status, createdAt: `${day}T00:00:0${batch}.00${i}Z`, text: 't' + i } as Suggestion);
+  const set = (day: string, batch: number, known: number, other: Suggestion['status'] = 'added') =>
+    Array.from({ length: 5 }, (_, i) => sg(day, batch, i < known ? 'known' : other, i));
+
+  it('goes up one step when most of the last decided set was already known, once per set', () => {
+    const past = [...set('2026-11-01', 1, 1), ...set('2026-11-02', 1, 5)];
+    const up = nextLevel(2, undefined, past);
+    expect(up).toEqual({ level: 3, basis: '2026-11-02#1', raised: true });
+    expect(nextLevel(3, up.basis, past)).toEqual({ level: 3, basis: '2026-11-02#1', raised: false });
+    expect(nextLevel(4, undefined, past).level).toBe(4); // already at the top
+  });
+  it('stays when the learner did not know most of them, and ignores undecided sets', () => {
+    expect(nextLevel(2, undefined, set('2026-11-02', 1, 3)).raised).toBe(false);
+    const undecided = [...set('2026-11-02', 1, 4), sg('2026-11-02', 1, 'pending', 9)];
+    expect(nextLevel(2, undefined, undecided).raised).toBe(false);
+  });
+  it('treats rows from before batches existed as set 1', () => {
+    const old = set('2026-11-02', 1, 5).map(({ batch: _b, ...x }) => x as Suggestion);
+    expect(nextLevel(2, undefined, old)).toMatchObject({ level: 3, raised: true });
+  });
+  it('tells the AI the level and the last result', () => {
+    const ctx = buildContext([], set('2026-11-02', 1, 5), 3);
+    expect(ctx.levelGuide).toMatch(/^Near-native/);
+    expect(ctx.avoidCliches).toBe(true);
+    expect(ctx.feedback).toMatch(/knew 5 of 5 .*go clearly beyond/);
+    expect(buildContext([], [], 1).avoidCliches).toBe(false);
+  });
+  it('allows another set only after deciding every suggestion, up to the daily limit', () => {
+    expect(canAskMore([])).toBe(false);
+    expect(canAskMore([...set('d', 1, 4), sg('d', 1, 'pending', 8)])).toBe(false);
+    expect(canAskMore(set('d', 1, 5))).toBe(true);
+    expect(canAskMore(set('d', MAX_BATCHES_PER_DAY, 5))).toBe(false);
+  });
+
+  it('end to end: all known → ask again → the level is raised and saved', async () => {
+    await saveSettings({ suggestionLevel: 2 });
+    aiItems = ['a1 b', 'a2 b', 'a3 b', 'a4 b', 'a5 b'].map((t) => item(t));
+    const first = await requestTodaysSuggestions();
+    expect(first.level).toBe(2);
+    for (const s of first.suggestions) await decideSuggestion(s.id, 'known');
+    await expect(requestTodaysSuggestions(new Date(), {})).resolves.toMatchObject({ usage: null }); // same day without "more": no new call
+    aiItems = ['c1 d', 'c2 d', 'c3 d', 'c4 d', 'c5 d', 'a1 b'].map((t) => item(t));
+    const second = await requestTodaysSuggestions(new Date(), { more: true });
+    expect(second).toMatchObject({ level: 3, levelRaised: true });
+    expect(second.suggestions).toHaveLength(10);
+    expect(second.suggestions.slice(5).every((s) => s.batch === 2 && s.level === 3)).toBe(true);
+    expect((await getSettings()).suggestionLevel).toBe(3);
+    expect((aiCalls[1] as { levelGuide: string }).levelGuide).toMatch(/^Near-native/);
+    // Can't ask again while the new set is undecided.
+    await expect(requestTodaysSuggestions(new Date(), { more: true })).rejects.toThrow();
   });
 });
 

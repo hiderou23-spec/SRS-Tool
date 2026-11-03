@@ -209,6 +209,12 @@ export interface SuggestContext {
   rejected: string[];
   /** Earlier suggestions not yet decided (do not repeat). */
   pending: string[];
+  /** Target difficulty, described in English. */
+  levelGuide: string;
+  /** Avoid common business clichés (from level 2 up). */
+  avoidCliches: boolean;
+  /** e.g. "In the last set, the learner already knew 5 of 5." */
+  feedback: string;
 }
 
 /**
@@ -220,7 +226,12 @@ export async function suggestExpressions(ctx: SuggestContext): Promise<{ items: 
   const prompt = [
     `Suggest ${ctx.count} English expressions this learner should add to their study list today.`,
     'Choose expressions a native speaker really uses in meetings, emails and conversations about payments, products, finance and leadership, plus some everyday conversation.',
-    'Prefer multi-word expressions (phrasal verbs, collocations, idioms, set phrases) at upper-intermediate to advanced level. No basic words, no rare or literary phrases, no proper nouns.',
+    'Prefer multi-word expressions (phrasal verbs, collocations, idioms, set phrases). No basic words, no rare, archaic or literary phrases, no proper nouns.',
+    `Target level: ${ctx.levelGuide}`,
+    ...(ctx.avoidCliches
+      ? ['Skip business-English staples that any working professional already knows (for example: touch base, circle back, follow up, ballpark figure, win-win, think outside the box, on the same page, low-hanging fruit, get buy-in, push back, loop in).']
+      : []),
+    ...(ctx.feedback ? [ctx.feedback] : []),
     'Vary the categories within the list. Do not suggest anything in the lists below, or a trivial variant of it.',
     '',
     `Already in the learner's library: ${list(ctx.library)}`,
