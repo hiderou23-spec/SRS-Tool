@@ -159,6 +159,7 @@ export async function answerCard(
   rating: RatingValue,
   durationMs: number,
   now = new Date(),
+  opts: { hintsUsed?: number } = {},
 ): Promise<AnswerResult> {
   const settings = await getSettings();
   const secondsPerCard = await estimateSecondsPerReview();
@@ -190,6 +191,7 @@ export async function answerCard(
       after,
       retrievability: retrievability(settings, before, now),
       wasIntroduction,
+      ...(opts.hintsUsed ? { hintsUsed: opts.hintsUsed } : {}),
     };
     await db.cards.put(updated);
     await db.logs.add(log);
