@@ -4,6 +4,7 @@ import { AI_MODELS, friendlyError, getAiModel, getApiKey } from '../lib/aiConfig
 import { toast, useSettings } from '../lib/hooks';
 import { saveSettings } from '../db/db';
 import { recordUsage } from './AiPanel';
+import { IconChevron } from './Icons';
 import {
   addSuggestion,
   canAskMore,
@@ -89,6 +90,7 @@ function Item({ s }: { s: Suggestion }) {
  */
 export function DailySuggestions({ paused }: { paused: boolean }) {
   const [loading, setLoading] = useState(false);
+  const [showDecided, setShowDecided] = useState(false);
   const settings = useSettings();
   const hasKey = !!getApiKey();
   const today = useLiveQuery(async () => suggestionsForDay(await todayKey()), []);
@@ -120,7 +122,18 @@ export function DailySuggestions({ paused }: { paused: boolean }) {
     }
   };
 
-  const pending = today.filter((s) => s.status === 'pending').length;
+  const pendingItems = today.filter((s) => s.status === 'pending');
+  const decidedItems = today.filter((s) => s.status !== 'pending');
+  const pending = pendingItems.length;
+  const count = (st: string) => decidedItems.filter((s) => s.status === st).length;
+  const breakdown = [
+    ['追加', count('added')],
+    ['知ってる', count('known')],
+    ['見送り', count('rejected')],
+  ]
+    .filter(([, n]) => n)
+    .map(([l, n]) => `${l}${n}`)
+    .join('・');
   const more = canAskMore(today);
   const upcoming = nextLevel(settings.suggestionLevel, settings.suggestionLevelBasis, today);
   const levelSelect = (
@@ -136,6 +149,7 @@ export function DailySuggestions({ paused }: { paused: boolean }) {
       <span className="grow">「知ってる」が多いと自動で上がります</span>
     </label>
   );
+  const canStart = today.length === 0 && !paused;
   return (
     <div className="card">
       <div className="row between" style={{ alignItems: 'baseline' }}>
@@ -143,7 +157,20 @@ export function DailySuggestions({ paused }: { paused: boolean }) {
         {today.length > 0 && <span className="tiny muted">{pending > 0 ? `あと${pending}語` : '選び終わりました'}</span>}
       </div>
       {today.length > 0 ? (
-        <div className="sg-list">{today.map((s) => <Item key={s.id} s={s} />)}</div>
+        <>
+          {/* Only undecided suggestions are shown in full; decided ones fold into one line. */}
+          {pending > 0 && <div className="sg-list">{pendingItems.map((s) => <Item key={s.id} s={s} />)}</div>}
+          {decidedItems.length > 0 && (
+            <>
+              <button className="disclosure sg-decided" aria-expanded={showDecided} onClick={() => setShowDecided(!showDecided)}>
+                <span>選んだ表現 {decidedItems.length}語<span className="muted">（{breakdown}）</span></span>
+                <IconChevron />
+              </button>
+              {showDecided && <div className="sg-list">{decidedItems.map((s) => <Item key={s.id} s={s} />)}</div>}
+            </>
+          )}
+          {pending === 0 && !more && <p className="small muted" style={{ margin: '10px 0 0' }}>今日の提案は以上です。また明日。</p>}
+        </>
       ) : paused ? (
         <p className="small" style={{ margin: '10px 0 0' }}>今日は復習を優先する日なので、新しい表現の提案はお休みです。</p>
       ) : (
@@ -169,8 +196,8 @@ export function DailySuggestions({ paused }: { paused: boolean }) {
           </button>
         </div>
       )}
-      {levelSelect}
-      {today.length > 0 && (
+      {(canStart || more) && levelSelect}
+      {pending > 0 && (
         <p className="tiny muted" style={{ margin: '10px 0 0' }}>
           追加した表現は新しいカードとして、1日の新規上限の範囲で出題されます。例文と訳はAIが作成したもの（要確認）です。
         </p>
