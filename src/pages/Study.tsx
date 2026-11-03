@@ -12,6 +12,7 @@ import { pickExample } from '../srs/rotation';
 import { highlight } from '../components/Highlight';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { encouragementFor } from '../lib/encouragement';
+import { hintSteps, type HintStep } from '../srs/hint';
 import { VocabSessionSummary } from '../components/Vocab';
 
 const RATINGS: { v: RatingValue; label: string; cls: string }[] = [
@@ -42,6 +43,23 @@ function ExampleBlock({ ex, expr, open, onToggle, hideJa }: { ex: Example; expr:
   );
 }
 
+function HintView({ step }: { step: HintStep }) {
+  if (step.kind === 'mask') return <div className="hint-mask">{step.text}</div>;
+  if (step.kind === 'sentence-mask') {
+    return (
+      <div className="hint-sentence">
+        {step.before}<span className="hint-mask inline">{step.masked}</span>{step.after}
+      </div>
+    );
+  }
+  return (
+    <div className="hint-sentence">
+      <span className="tiny muted" style={{ display: 'block', marginBottom: 2 }}>例文</span>
+      {step.sentence}
+    </div>
+  );
+}
+
 function Encouragement({ session }: { session: StudySession }) {
   const answered = session.reviewedCount + session.newCount;
   // A new pair per end screen: the goal sheet and a later finished screen of
@@ -64,6 +82,10 @@ export default function Study() {
   const [card, setCard] = useState<ReviewCard | null>(null);
   const [expr, setExpr] = useState<Expression | null>(null);
   const [revealed, setRevealed] = useState(false);
+  /** Hint steps shown for the current card (0 = none). */
+  const [hintLevel, setHintLevel] = useState(0);
+  /** Hint steps actually shown (hintLevel clamped to the card's steps), for answer(). */
+  const hintsShown = useRef(0);
   const [moreOpen, setMoreOpen] = useState(false);
   const [pronOpen, setPronOpen] = useState<string | null>(null);
   const [showComplete, setShowComplete] = useState(false);
@@ -161,6 +183,7 @@ export default function Study() {
       setExpr(e);
       setLoadingNext(false);
       setRevealed(false);
+      setHintLevel(0);
       setMoreOpen(false);
       setPronOpen(null);
       setMenuOpen(false);
@@ -203,7 +226,10 @@ export default function Study() {
       if (!session || !card || busy || loadingNext) return;
       setBusy(true);
       try {
-        const res = await answerCard(session.id, card.id, r, cardElapsed());
+        // A recall that needed a hint is never "Easy" (FSRS would overestimate it).
+        const used = hintsShown.current;
+        if (used > 0 && r === 4) return;
+        const res = await answerCard(session.id, card.id, r, cardElapsed(), new Date(), { hintsUsed: used });
         setExcluded(null);
         setLoadingNext(true);
         applySession(res.session, card.id);
@@ -273,6 +299,8 @@ export default function Study() {
       if (!revealed && (e.key === ' ' || e.key === 'Enter')) {
         e.preventDefault();
         setRevealed(true);
+      } else if (!revealed && (e.key === 'h' || e.key === 'H')) {
+        setHintLevel((n) => n + 1); // clamped to the available steps when rendering
       } else if (revealed && ['1', '2', '3', '4'].includes(e.key)) {
         void answer(Number(e.key) as RatingValue);
       }
@@ -335,6 +363,11 @@ export default function Study() {
   const meaningHint = expr.meaning || expr.ai?.meaning;
   const prompt = sentenceMode ? mainEx!.ja : expr.productionPrompt || meaningHint || '（日本語訳が未登録です）';
   const isNew = card.introducedAt === null;
+  const steps = hintSteps({ isProd, exprText: expr.text, example: mainEx, sentenceMode });
+  const shownHints = Math.min(hintLevel, steps.length);
+  const hintUsed = shownHints > 0;
+  hintsShown.current = shownHints;
+  const nextHint = () => setHintLevel(Math.min(steps.length, shownHints + 1));
   const hasAi =
     (!isProd && !!expr.ai?.meaning) ||
     [mainEx, ...(moreOpen ? others : [])].some((e) => e && e.origin === 'ai' && e.status !== 'verified');
@@ -357,6 +390,15 @@ export default function Study() {
           </>
         ) : (
           <div className="expr">{expr.text}</div>
+        )}
+
+        {!revealed && hintUsed && (
+          <div className="hints" onClick={(e) => e.stopPropagation()} aria-live="polite">
+            <HintView step={steps[shownHints - 1]} />
+            <p className="tiny muted" style={{ margin: '6px 0 0' }}>
+              ヒント {shownHints}/{steps.length}　まずは数秒、自分で思い出してみてください
+            </p>
+          </div>
         )}
 
         {revealed && (
@@ -402,17 +444,31 @@ export default function Study() {
       <div className="study-bottom">
         {excludedBar}
         {!revealed ? (
-          <button className="btn primary block lg" onClick={() => setRevealed(true)}>
-            {isProd ? '英文を見る' : '答えを見る'}
-          </button>
+          <div className="ask-row">
+            {steps.length > 0 && (
+              <button className="btn lg hint-btn" disabled={shownHints >= steps.length} onClick={nextHint}>
+                {shownHints === 0 ? 'ヒント' : shownHints < steps.length ? 'もう少し' : 'ヒント終了'}
+              </button>
+            )}
+            <button className="btn primary block lg" onClick={() => setRevealed(true)}>
+              {isProd ? '英文を見る' : '答えを見る'}
+            </button>
+          </div>
         ) : (
           <>
-          {totalAnswers !== undefined && totalAnswers < 30 && (
+          {hintUsed ? (
+            <p className="rating-hint">ヒントを使ったので <b>Hard</b> がおすすめです（Easy は選べません）。思い出せなかったら Again。</p>
+          ) : totalAnswers !== undefined && totalAnswers < 30 && (
             <p className="rating-hint">下の数字は「次にこのカードが出るまで」の間隔です。迷ったら Good。</p>
           )}
           <div className="ratings">
             {RATINGS.map(({ v, label, cls }) => (
-              <button key={v} className={`rate ${cls}`} disabled={busy || loadingNext} onClick={() => answer(v)}>
+              <button
+                key={v}
+                className={`rate ${cls}${hintUsed && v === 2 ? ' suggested' : ''}`}
+                disabled={busy || loadingNext || (hintUsed && v === 4)}
+                onClick={() => answer(v)}
+              >
                 <b>{label}</b>
                 <small>{intervals ? formatInterval(intervals[v]) : ''}</small>
               </button>

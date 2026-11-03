@@ -313,3 +313,13 @@ a.card.vocab { display: block; color: inherit; text-decoration: none; }
 .sg-example { font-size: 13.5px; line-height: 1.55; margin: 8px 0 0; padding: 8px 10px; background: var(--surface-2); border-radius: 10px; }
 .sg-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .select.sg-level { width: auto; min-height: 30px; padding: 2px 8px; font-size: 13px; }
+
+/* Hints */
+.hints { margin-top: 18px; padding: 12px 14px; background: var(--surface-2); border-radius: 14px; }
+.hint-mask { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 22px; letter-spacing: 0.08em; color: var(--ink); }
+.hint-mask.inline { font-size: inherit; letter-spacing: 0.05em; color: var(--accent); font-weight: 600; }
+.hint-sentence { font-family: var(--serif); font-size: 18px; line-height: 1.5; }
+.ask-row { display: flex; gap: 10px; }
+.ask-row .hint-btn { flex: 0 0 auto; min-width: 104px; }
+.rate.suggested { outline: 2px solid var(--hard); outline-offset: -2px; }
+.rate:disabled { opacity: 0.35; }

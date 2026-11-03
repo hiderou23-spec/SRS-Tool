@@ -173,6 +173,8 @@ export interface ReviewLogEntry {
   /** Retrievability at review time (null for new cards). */
   retrievability: number | null;
   wasIntroduction: boolean;
+  /** Hint steps shown before answering (0 / undefined = none). */
+  hintsUsed?: number;
 }
 
 export interface StudySession {
