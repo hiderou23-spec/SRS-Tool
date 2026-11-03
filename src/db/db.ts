@@ -8,6 +8,7 @@ import type {
   ReviewLogEntry,
   Settings,
   StudySession,
+  Suggestion,
 } from './types';
 import { DEFAULT_SETTINGS } from './types';
 
@@ -20,6 +21,7 @@ export class EnglishMasteryDB extends Dexie {
   rawRows!: EntityTable<RawImportRow, 'id'>;
   duplicates!: EntityTable<DuplicateGroup, 'id'>;
   settings!: EntityTable<Settings, 'id'>;
+  suggestions!: EntityTable<Suggestion, 'id'>;
 
   constructor(name = 'english-mastery') {
     super(name);
@@ -32,6 +34,10 @@ export class EnglishMasteryDB extends Dexie {
       rawRows: 'id, importId',
       duplicates: 'id, resolution',
       settings: 'id',
+    });
+    // v2: daily AI suggestions (new table only; existing data untouched).
+    this.version(2).stores({
+      suggestions: 'id, day, normalized, status, createdAt',
     });
   }
 }

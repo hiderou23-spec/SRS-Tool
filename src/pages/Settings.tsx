@@ -152,6 +152,7 @@ export default function SettingsPage() {
       <div className="section-title">AI 生成</div>
       <AiPanel />
       <div className="list">
+        <Toggle label="毎日のAI提案" desc="ホームに、仕事に合った表現を1日5語提案します（APIキーが必要）" checked={s.dailySuggestions} onChange={(v) => set({ dailySuggestions: v })} />
         <Link href="#/review" label="AIの内容を見直す" />
       </div>
 

@@ -6,6 +6,7 @@ import { navigate } from '../lib/router';
 import { addSampleDeck } from '../lib/sample';
 import { streakFrom } from '../srs/stats';
 import { VocabCounter } from '../components/Vocab';
+import { DailySuggestions } from '../components/Suggestions';
 
 export default function Home() {
   const settings = useSettings();
@@ -88,6 +89,8 @@ export default function Home() {
       </section>
 
       <VocabCounter />
+
+      {settings.dailySuggestions && <DailySuggestions paused={plan.newSuppressed || plan.backlog > 0} />}
 
       {plan.backlog > 0 && (
         <div className="notice info">

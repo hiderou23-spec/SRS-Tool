@@ -250,6 +250,30 @@ export interface DuplicateGroup {
   updatedAt: string;
 }
 
+export type SuggestionStatus = 'pending' | 'added' | 'known' | 'rejected';
+
+/** One expression the AI suggested for a given day (kept for history and better future suggestions). */
+export interface Suggestion {
+  id: string;
+  /** Study-day key (YYYY-MM-DD) it was suggested for. */
+  day: string;
+  text: string;
+  /** normalizeKey(text), for duplicate checks. */
+  normalized: string;
+  meaning: string;
+  /** Why it is worth learning (Japanese, one line). */
+  reason: string;
+  category: Category;
+  importance: number;
+  examples: { kind: ExampleKind; en: string; ja: string }[];
+  status: SuggestionStatus;
+  /** Set when added to the library. */
+  expressionId?: string;
+  model?: string;
+  createdAt: string;
+  decidedAt?: string;
+}
+
 export interface Settings {
   id: 'settings';
   desiredRetention: number;
@@ -265,6 +289,8 @@ export interface Settings {
   theme: 'system' | 'light' | 'dark';
   lastBackupAt: string | null;
   dayStartHour: number;
+  /** Show the daily AI suggestions card on Home (needs an API key). */
+  dailySuggestions: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -281,4 +307,5 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   lastBackupAt: null,
   dayStartHour: 4,
+  dailySuggestions: true,
 };
