@@ -324,3 +324,21 @@ a.card.vocab { display: block; color: inherit; text-decoration: none; }
 .rate.suggested { outline: 2px solid var(--hard); outline-offset: -2px; }
 .rate:disabled { opacity: 0.35; }
 .disclosure.sg-decided { margin-top: 8px; font-size: 14px; }
+
+/* Today's expressions */
+.today-inline { margin: 14px auto 0; max-width: 420px; text-align: left; }
+.today-card { padding: 4px 14px 12px; }
+.today-card .disclosure.today-toggle { border: 0; padding-left: 2px; padding-right: 2px; margin-top: 4px; }
+.today-list { margin-top: 6px; }
+.today-row { padding: 10px 2px; border-bottom: 0.5px solid var(--line); }
+.today-row:last-of-type { border-bottom: 0; }
+.today-row.suspended .today-text { color: var(--ink-3); text-decoration: line-through; }
+.today-text { font-family: var(--serif); font-size: 17px; }
+.today-chip { font-size: 10.5px; font-weight: 700; border-radius: 5px; padding: 2px 5px; border: 0.5px solid currentColor; line-height: 1; }
+.today-chip.again { color: var(--again); }
+.today-chip.hard { color: var(--hard); }
+.today-chip.hint { color: var(--hard); }
+.today-chip.new { color: var(--accent); }
+.today-meaning { font-size: 14px; color: var(--ink-2); margin-top: 4px; }
+.today-actions { display: flex; flex-wrap: wrap; gap: 2px; margin: 2px 0 0 -12px; }
+.today-actions .btn.sm { min-height: 30px; }
