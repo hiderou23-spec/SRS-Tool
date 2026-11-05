@@ -6,6 +6,7 @@ import { navigate } from '../lib/router';
 import { addSampleDeck } from '../lib/sample';
 import { streakFrom } from '../srs/stats';
 import { VocabCounter } from '../components/Vocab';
+import { TodayList } from '../components/TodayList';
 import { DailySuggestions } from '../components/Suggestions';
 
 export default function Home() {
@@ -89,6 +90,8 @@ export default function Home() {
       </section>
 
       <VocabCounter />
+
+      <TodayList card />
 
       {settings.dailySuggestions && <DailySuggestions paused={plan.newSuppressed || plan.backlog > 0} />}
 

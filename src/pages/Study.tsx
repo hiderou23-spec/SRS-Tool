@@ -14,6 +14,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { encouragementFor } from '../lib/encouragement';
 import { hintSteps, type HintStep } from '../srs/hint';
 import { VocabSessionSummary } from '../components/Vocab';
+import { TodayList } from '../components/TodayList';
 
 const RATINGS: { v: RatingValue; label: string; cls: string }[] = [
   { v: 1, label: 'Again', cls: 'again' },
@@ -341,6 +342,7 @@ export default function Study() {
             {session.reviewedCount}件の復習・{session.newCount}件の新しい表現 / {Math.round(session.activeMs / 60000)}分
           </p>
           <VocabSessionSummary sessionId={session.id} />
+          <TodayList />
           <Encouragement session={session} />
           <p className="tiny muted">次回の復習日はFSRSが自動で決めています。</p>
         </div>
