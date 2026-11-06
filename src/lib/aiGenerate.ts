@@ -17,6 +17,7 @@ import { nowIso, uid } from './util';
 import { effectiveImportance } from '../srs/queue';
 import { estimateCostUsd, getAiModel, getApiKey, type GenerateUsage } from './aiConfig';
 export type { GenerateUsage } from './aiConfig';
+import type { CaptureAi } from './capture';
 
 const CATEGORIES = ['business', 'daily', 'phrasal_verb', 'idiom', 'academic', 'technical', 'low_priority'] as const;
 
@@ -244,4 +245,46 @@ export async function suggestExpressions(ctx: SuggestContext): Promise<{ items: 
   ].join('\n');
   const { data, usage } = await call(SuggestSchema, prompt);
   return { items: data.suggestions, usage, model: getAiModel() };
+}
+
+const CaptureSchema = z.object({
+  base_form: z
+    .string()
+    .describe('The expression as a learner would study it: dictionary form (verbs in base form, nouns singular), keeping a multi-word phrase whole; unchanged if already so'),
+  meaning_ja: z.string().describe('Concise natural Japanese meaning as used in the sentence'),
+  category: z.enum(CATEGORIES),
+  importance: z.number().int().describe('0-100 for this learner'),
+  sentence_ja: z.string().describe('Natural Japanese translation of the found sentence'),
+  examples: z
+    .array(z.object({ kind: z.enum(['business', 'daily', 'alternative']), en: z.string(), ja: z.string() }))
+    .describe('Exactly 2 NEW examples: one daily, one alternative (different sense or usage). The found sentence already serves as the business example.'),
+  pronunciation: PronSchema.describe('Pronunciation guide for the FOUND sentence, exactly as written'),
+});
+
+/**
+ * For an expression the learner found in a real text. Sends only the selected
+ * words and the one sentence they were found in.
+ */
+export async function analyzeCaptured(selection: string, sentence: string): Promise<{ result: CaptureAi; usage: GenerateUsage }> {
+  const prompt = [
+    `The learner found this expression in a real text and wants to study it: "${selection}"`,
+    `Sentence it appeared in: ${sentence}`,
+    '',
+    'Give its base form, Japanese meaning as used here, category, importance, a Japanese translation of the sentence, 2 new examples (daily, alternative) following the example-sentence rules, and a pronunciation guide for the found sentence exactly as written.',
+  ].join('\n');
+  const { data, usage } = await call(CaptureSchema, prompt);
+  const s = sentence.trim();
+  return {
+    usage,
+    result: {
+      baseForm: data.base_form.trim() || selection,
+      meaning: data.meaning_ja.trim(),
+      category: data.category as Category,
+      importance: data.importance,
+      sentenceJa: data.sentence_ja.trim(),
+      examples: data.examples.slice(0, 2).map((x) => ({ kind: x.kind, en: x.en.trim(), ja: x.ja.trim() })),
+      pronunciation: toGuide(data.pronunciation, s),
+      model: getAiModel(),
+    },
+  };
 }

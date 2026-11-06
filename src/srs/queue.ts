@@ -6,7 +6,7 @@
  * remainder simply stays due (FSRS handles overdue cards correctly when they
  * are eventually reviewed) and is reported honestly via `backlog`.
  */
-import type { Expression, ReviewCard, ReviewLogEntry, Settings } from '../db/types';
+import { CAPTURE_TAG, type Expression, type ReviewCard, type ReviewLogEntry, type Settings } from '../db/types';
 import { State } from 'ts-fsrs';
 import { retrievability } from './scheduler';
 import { endOfStudyDay } from '../lib/util';
@@ -161,6 +161,9 @@ export function planQueue(input: PlanInput): QueuePlan {
   const byImportance = (a: ReviewCard, b: ReviewCard) => {
     const ea = expressions.get(a.expressionId);
     const eb = expressions.get(b.expressionId);
+    // Expressions the learner picked from a real text come first.
+    const captured = Number(!!eb?.tags?.includes(CAPTURE_TAG)) - Number(!!ea?.tags?.includes(CAPTURE_TAG));
+    if (captured !== 0) return captured;
     const d = effectiveImportance(eb) - effectiveImportance(ea);
     if (d !== 0) return d;
     // Stable: original import order.
