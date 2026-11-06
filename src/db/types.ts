@@ -15,6 +15,9 @@
 
 export const SCHEMA_VERSION = 1;
 
+/** Tag on expressions the learner added from a text they copied (introduced first). */
+export const CAPTURE_TAG = '自分で追加';
+
 /** Learning modes. `listening` is reserved for Phase 3. */
 export type StudyMode = 'recognition' | 'production' | 'listening';
 export const ACTIVE_MODES: StudyMode[] = ['recognition', 'production'];
