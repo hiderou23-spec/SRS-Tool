@@ -202,3 +202,18 @@ describe('backup', () => {
     expect(await db.suggestions.count()).toBe(0);
   });
 });
+
+describe('suggestion progress', () => {
+  it('creeps while thinking, then follows the candidates, never 100 before saving', async () => {
+    const { suggestionProgress } = await import('../src/lib/suggestions');
+    const { countStartedItems } = await vi.importActual<typeof import('../src/lib/aiGenerate')>('../src/lib/aiGenerate');
+    expect(suggestionProgress(0, 0, 8)).toBe(0);
+    expect(suggestionProgress(0, 4000, 8)).toBe(8);
+    expect(suggestionProgress(0, 60000, 8)).toBe(15);
+    expect(suggestionProgress(1, 0, 8)).toBe(20);
+    expect(suggestionProgress(8, 0, 8)).toBe(90);
+    expect(suggestionProgress(20, 0, 8)).toBe(90);
+    expect(countStartedItems('{"suggestions":[{"text":"a","meaning_ja":"x"},{"text" : "b"')).toBe(2);
+    expect(countStartedItems('')).toBe(0);
+  });
+});

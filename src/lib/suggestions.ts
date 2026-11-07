@@ -176,7 +176,20 @@ export interface SuggestResult {
  * Settings.suggestionBatchesPerDay). The level goes up automatically when most of the last
  * set was already known.
  */
-export async function requestTodaysSuggestions(now = new Date(), opts: { more?: boolean } = {}): Promise<SuggestResult> {
+/**
+ * Progress (0–100) while a set is being requested. Before the first candidate
+ * appears the AI is thinking: creep up to 15% over ~8 s. Then each candidate
+ * started in the streamed reply moves the bar, capped at 95% until saved.
+ */
+export function suggestionProgress(started: number, elapsedMs: number, total = ASK_COUNT): number {
+  if (started <= 0) return Math.round(Math.min(15, (elapsedMs / 8000) * 15));
+  return Math.round(Math.min(95, 15 + ((Math.min(started, total) - 0.5) / total) * 80));
+}
+
+export async function requestTodaysSuggestions(
+  now = new Date(),
+  opts: { more?: boolean; onProgress?: (started: number) => void } = {},
+): Promise<SuggestResult> {
   const settings = await getSettings();
   const day = dayKey(now, settings.dayStartHour);
   const existing = await suggestionsForDay(day);
@@ -190,7 +203,7 @@ export async function requestTodaysSuggestions(now = new Date(), opts: { more?: 
     await saveSettings({ suggestionLevel: lv.level, suggestionLevelBasis: lv.basis });
   }
   const { suggestExpressions } = await import('./aiGenerate');
-  const { items, usage, model } = await suggestExpressions(buildContext(expressions, past, lv.level));
+  const { items, usage, model } = await suggestExpressions(buildContext(expressions, past, lv.level), opts.onProgress);
 
   const taken = new Set([...expressions.map((e) => e.normalized), ...past.map((s) => s.normalized)]);
   const picked = pickNew(items, taken, DAILY_SUGGESTIONS);

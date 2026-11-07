@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { AI_MODELS, friendlyError, getAiModel, getApiKey } from '../lib/aiConfig';
 import { toast, useSettings } from '../lib/hooks';
@@ -13,6 +13,7 @@ import {
   levelInfo,
   nextLevel,
   requestTodaysSuggestions,
+  suggestionProgress,
   SUGGESTION_LEVELS,
   suggestionsForDay,
   todayKey,
@@ -22,7 +23,7 @@ import type { Suggestion } from '../db/types';
 /** Rough cost of one request (library sample + 8 candidates with examples). */
 function estimateUsd(): number {
   const m = AI_MODELS.find((x) => x.id === getAiModel())!;
-  return (5000 * m.inPerM + 4000 * m.outPerM) / 1e6;
+  return (5000 * m.inPerM + 2000 * m.outPerM) / 1e6;
 }
 
 function Item({ s }: { s: Suggestion }) {
@@ -34,12 +35,13 @@ function Item({ s }: { s: Suggestion }) {
     try {
       const { firstExampleId, expressionId } = await addSuggestion(s.id);
       toast(`「${s.text}」を追加しました`);
-      // Pronunciation guide for the first example, in the background.
+      // Suggestions come with one example (to keep them fast): write the other
+      // examples and the pronunciation guide now, in the background.
       if (firstExampleId && getApiKey()) {
         void import('../lib/aiGenerate')
-          .then(({ generatePronunciation }) => generatePronunciation(expressionId, firstExampleId))
-          .then(recordUsage)
-          .catch((err) => toast(`発音ガイドは作れませんでした：${friendlyError(err)}`));
+          .then(({ completeExamples }) => completeExamples(expressionId))
+          .then((u) => u && recordUsage(u))
+          .catch((err) => toast(`例文・発音ガイドは作れませんでした：${friendlyError(err)}`));
       }
     } catch (err) {
       toast(friendlyError(err));
@@ -90,7 +92,15 @@ function Item({ s }: { s: Suggestion }) {
  */
 export function DailySuggestions({ paused }: { paused: boolean }) {
   const [loading, setLoading] = useState(false);
+  /** While requesting: candidates started in the streamed reply, and when it began. */
+  const [progress, setProgress] = useState<{ started: number; t0: number } | null>(null);
+  const [, tick] = useState(0);
   const [showDecided, setShowDecided] = useState(false);
+  useEffect(() => {
+    if (!progress) return;
+    const t = setInterval(() => tick((n) => n + 1), 300);
+    return () => clearInterval(t);
+  }, [progress]);
   const settings = useSettings();
   const hasKey = !!getApiKey();
   const today = useLiveQuery(async () => suggestionsForDay(await todayKey()), []);
@@ -109,9 +119,13 @@ export function DailySuggestions({ paused }: { paused: boolean }) {
 
   const fetchNow = async (more = false) => {
     setLoading(true);
+    setProgress({ started: 0, t0: Date.now() });
     try {
       const before = today.length;
-      const { usage, suggestions, level, levelRaised } = await requestTodaysSuggestions(new Date(), { more });
+      const { usage, suggestions, level, levelRaised } = await requestTodaysSuggestions(new Date(), {
+        more,
+        onProgress: (started) => setProgress((p) => (p && started !== p.started ? { ...p, started } : p)),
+      });
       if (usage) recordUsage(usage);
       if (levelRaised) toast(`知っている表現が多かったので、レベルを「${levelInfo(level).label}」に上げました`);
       else if (suggestions.length === before) toast('新しい候補が見つかりませんでした。また明日お試しください');
@@ -119,8 +133,20 @@ export function DailySuggestions({ paused }: { paused: boolean }) {
       toast(friendlyError(err));
     } finally {
       setLoading(false);
+      setProgress(null);
     }
   };
+
+  const pct = progress ? suggestionProgress(progress.started, Date.now() - progress.t0) : 0;
+  const progressView = progress && (
+    <div className="sg-progress" role="status" aria-live="polite">
+      <div className="row between small">
+        <span>{progress.started === 0 ? 'AIが考えています…' : '候補を書いています…'}</span>
+        <b>{pct}%</b>
+      </div>
+      <div className="meter" style={{ marginTop: 6 }}><div style={{ width: `${pct}%` }} /></div>
+    </div>
+  );
 
   const pendingItems = today.filter((s) => s.status === 'pending');
   const decidedItems = today.filter((s) => s.status !== 'pending');
@@ -178,9 +204,9 @@ export function DailySuggestions({ paused }: { paused: boolean }) {
           <p className="small" style={{ margin: '10px 0 12px' }}>
             あなたの仕事に合った表現を{DAILY_SUGGESTIONS}語提案します。気に入ったものだけ追加してください。
           </p>
-          <button className="btn block" disabled={loading} onClick={() => fetchNow()}>
-            {loading ? '考えています…' : `今日の${DAILY_SUGGESTIONS}語を提案してもらう`}
-          </button>
+          {loading ? progressView : (
+            <button className="btn block" onClick={() => fetchNow()}>今日の{DAILY_SUGGESTIONS}語を提案してもらう</button>
+          )}
           <p className="tiny muted" style={{ margin: '8px 0 0' }}>
             目安 約${estimateUsd().toFixed(2)}／回。送信するのはライブラリの英語表現（一部）とこれまでの提案への選択だけです。
           </p>
@@ -191,9 +217,9 @@ export function DailySuggestions({ paused }: { paused: boolean }) {
           {upcoming.raised && (
             <p className="small" style={{ margin: '0 0 8px' }}>知っている表現が多かったので、次はレベルを「{levelInfo(upcoming.level).label}」に上げて提案します。</p>
           )}
-          <button className="btn block" disabled={loading} onClick={() => fetchNow(true)}>
-            {loading ? '考えています…' : `もう${DAILY_SUGGESTIONS}語提案してもらう（約$${estimateUsd().toFixed(2)}）`}
-          </button>
+          {loading ? progressView : (
+            <button className="btn block" onClick={() => fetchNow(true)}>もう{DAILY_SUGGESTIONS}語提案してもらう（約${estimateUsd().toFixed(2)}）</button>
+          )}
         </div>
       )}
       {(canStart || more) && levelSelect}

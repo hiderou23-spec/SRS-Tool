@@ -15,6 +15,22 @@ vi.mock('@anthropic-ai/sdk', () => ({
           calls.push(params);
           return { stop_reason: 'end_turn', parsed_output: nextOutput, usage: { input_tokens: 1000, output_tokens: 2000 } };
         },
+        // Streaming: replays the JSON in chunks to 'text' listeners, then resolves.
+        stream: (params: Record<string, unknown>) => {
+          calls.push({ ...params, __stream: true });
+          const listeners: ((d: string, s: string) => void)[] = [];
+          const json = JSON.stringify(nextOutput);
+          return {
+            on(ev: string, cb: (d: string, s: string) => void) {
+              if (ev === 'text') listeners.push(cb);
+              return this;
+            },
+            async finalMessage() {
+              for (let i = 40; i < json.length + 40; i += 40) for (const l of listeners) l(json.slice(i - 40, i), json.slice(0, i));
+              return { stop_reason: 'end_turn', parsed_output: null, content: [{ type: 'text', text: json }], usage: { input_tokens: 500, output_tokens: 300 } };
+            },
+          };
+        },
       },
     };
   },
@@ -96,5 +112,56 @@ describe('in-app AI generation', () => {
     expect(await mod.bulkCandidates(5)).toEqual([b, a]);
     localStorage.removeItem('em.anthropicApiKey');
     await expect(mod.generateExamples(a)).rejects.toThrow('API キー');
+  });
+});
+
+describe('faster suggestions and filling in later', () => {
+  const item = (text: string) => ({ text, meaning_ja: 'm', why_ja: 'w', category: 'business', importance: 80, examples: [{ kind: 'business', en: `We ${text}.`, ja: '例' }] });
+
+  it('streams the suggestion request at low effort and reports progress', async () => {
+    const { suggestExpressions } = await import('../src/lib/aiGenerate');
+    nextOutput = { suggestions: ['a b', 'c d', 'e f'].map(item) };
+    const seen: number[] = [];
+    const ctx = { count: 3, library: [], added: [], known: [], rejected: [], pending: [], levelGuide: 'x', avoidCliches: true, feedback: '' };
+    const res = await suggestExpressions(ctx, (n) => seen.push(n));
+    expect(res.items.map((i) => i.text)).toEqual(['a b', 'c d', 'e f']);
+    const call = calls[0] as { __stream?: boolean; betas: string[]; output_config: { effort: string } };
+    expect(call.__stream).toBe(true);
+    expect(call.output_config.effort).toBe('low');
+    expect(call.betas).toEqual(['server-side-fallback-2026-07-01', 'structured-outputs-2025-12-15']);
+    expect(seen.length).toBeGreaterThan(2);
+    expect(seen[seen.length - 1]).toBe(3);
+    expect([...seen].sort((x, y) => x - y)).toEqual(seen); // never goes backwards
+  });
+
+  it('Haiku streams without the fallback beta', async () => {
+    const { suggestExpressions } = await import('../src/lib/aiGenerate');
+    localStorage.setItem('em.aiModel', 'claude-haiku-5-5');
+    nextOutput = { suggestions: [item('a b')] };
+    await suggestExpressions({ count: 1, library: [], added: [], known: [], rejected: [], pending: [], levelGuide: 'x', avoidCliches: true, feedback: '' }, () => {});
+    const call = calls[0] as { betas: string[]; fallbacks?: string };
+    expect(call.betas).toEqual(['structured-outputs-2025-12-15']);
+    expect(call.fallbacks).toBeUndefined();
+  });
+
+  it('completeExamples keeps the existing example, adds the missing kinds and a guide for the first', async () => {
+    const { completeExamples } = await import('../src/lib/aiGenerate');
+    const id = await addExpr({ examples: [{ id: 'x1', kind: 'business', en: 'We need to hammer out the details.', ja: '詳細を詰める必要がある。', origin: 'ai', status: 'unverified' }] });
+    nextOutput = {
+      examples: [
+        { kind: 'daily', en: 'We hammered out our plans.', ja: '計画を決めた。' },
+        { kind: 'alternative', en: 'They hammered out a deal.', ja: '合意をまとめた。' },
+        { kind: 'daily', en: 'Extra.', ja: '余分' },
+      ],
+      pronunciation: pron,
+    };
+    await completeExamples(id);
+    const e = (await db.expressions.get(id))!;
+    expect(e.examples.map((x) => [x.id === 'x1' ? 'kept' : x.origin, x.kind])).toEqual([['kept', 'business'], ['ai', 'daily'], ['ai', 'alternative']]);
+    expect(e.examples[0].pronunciation?.level1.text).toBe('We need to hammer out the details.');
+    expect(String((calls[0] as { messages: { content: string }[] }).messages[0].content)).toContain('kinds: daily, alternative');
+    // Nothing left to do: no further call.
+    expect(await completeExamples(id)).toBeNull();
+    expect(calls).toHaveLength(1);
   });
 });
