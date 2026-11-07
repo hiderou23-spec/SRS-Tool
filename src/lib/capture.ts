@@ -58,13 +58,24 @@ const ENDS_SENTENCE = /[.?!。！？]["'”’)\]]*$/;
 const ABBREV = /^(e\.g|i\.e|etc|vs|mr|mrs|ms|dr|inc|ltd|co|corp|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|u\.s|no)\.$/i;
 
 /** The sentence(s) containing the selection, as plain text. */
-export function sentenceAround(tokens: string[], sel: Selection): string {
+export function sentenceRange(tokens: string[], sel: Selection): Selection {
   const ends = (t: string) => ENDS_SENTENCE.test(t) && !ABBREV.test(t);
   let start = sel.a;
   while (start > 0 && !ends(tokens[start - 1])) start--;
   let end = sel.b;
   while (end < tokens.length - 1 && !ends(tokens[end])) end++;
-  return tokens.slice(start, end + 1).join(' ');
+  return { a: start, b: end };
+}
+
+export function sentenceAround(tokens: string[], sel: Selection): string {
+  const r = sentenceRange(tokens, sel);
+  return tokens.slice(r.a, r.b + 1).join(' ');
+}
+
+/** True when the selection is (practically) the whole sentence it is in. */
+export function isWholeSentence(selection: string, sentence: string): boolean {
+  const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9']+/g, ' ').trim();
+  return !!selection && norm(selection) === norm(sentence);
 }
 
 export async function findExisting(text: string): Promise<Expression | undefined> {
@@ -117,13 +128,16 @@ export async function addCaptured(input: CaptureInput, now = new Date()): Promis
       // The sentence itself is real; its translation (if any) is AI-made, so it stays unverified.
       origin: 'user',
       status: input.ai ? 'unverified' : 'verified',
-      ...(input.ai?.pronunciation ? { pronunciation: input.ai.pronunciation } : {}),
     });
   }
   for (const x of input.ai?.examples ?? []) {
     if (examples.length >= 3 || !x.en.trim()) continue;
     examples.push({ id: uid(), kind: x.kind, en: x.en.trim(), ja: x.ja.trim(), origin: 'ai', status: 'unverified' });
   }
+  // The guide was written for one specific sentence: attach it only to that example.
+  const pron = input.ai?.pronunciation;
+  const target = pron && examples.find((x) => x.en === pron.level1.text);
+  if (pron && target) target.pronunciation = pron;
   const expr: Expression = {
     id: uid(),
     text,

@@ -81,26 +81,53 @@ function toGuide(p: z.infer<typeof PronSchema>, sentence: string): Pronunciation
   };
 }
 
-async function call<T>(schema: z.ZodType<T>, user: string): Promise<{ data: T; usage: GenerateUsage }> {
+interface CallOptions {
+  /** Thinking effort: 'low' for quick selection tasks, 'medium' (default) for writing material. */
+  effort?: 'low' | 'medium';
+  /** Stream the reply and report the JSON text received so far (for progress). */
+  onText?: (snapshot: string) => void;
+}
+
+async function call<T>(schema: z.ZodType<T>, user: string, opts: CallOptions = {}): Promise<{ data: T; usage: GenerateUsage }> {
   const c = await client();
   const model = getAiModel();
   const { betaZodOutputFormat } = await import('@anthropic-ai/sdk/helpers/beta/zod');
   // Claude Haiku has no server-side refusal fallback; send the parameter only to models that have it.
-  const fallback = model.startsWith('claude-haiku') ? {} : { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const };
-  const res = await c.beta.messages.parse({
+  const fallbackBetas = model.startsWith('claude-haiku') ? [] : ['server-side-fallback-2026-07-01'];
+  const fallback = model.startsWith('claude-haiku') ? {} : { fallbacks: 'default' as const };
+  const format = betaZodOutputFormat(schema);
+  const params = {
     model,
     max_tokens: 16000,
     ...fallback,
     system: SYSTEM,
-    output_config: { effort: 'medium', format: betaZodOutputFormat(schema) },
-    messages: [{ role: 'user', content: user }],
-  });
+    output_config: { effort: opts.effort ?? 'medium', format },
+    messages: [{ role: 'user' as const, content: user }],
+  };
+  let res;
+  if (opts.onText) {
+    // Streaming: the structured-outputs beta is added by parse() but not by stream().
+    const stream = c.beta.messages.stream({ ...params, betas: [...fallbackBetas, 'structured-outputs-2025-12-15'] });
+    stream.on('text', (_delta, snapshot) => opts.onText!(snapshot));
+    res = await stream.finalMessage();
+  } else {
+    res = await c.beta.messages.parse({ ...params, betas: fallbackBetas });
+  }
   if (res.stop_reason === 'refusal') throw new Error('AI がこの表現の生成を辞退しました');
   if (res.stop_reason === 'max_tokens') throw new Error('出力が途中で切れました。もう一度お試しください');
-  if (!res.parsed_output) throw new Error('AI の出力を読み取れませんでした');
+  let parsed: T | null = (res as { parsed_output?: T | null }).parsed_output ?? null;
+  if (parsed == null) {
+    const text = res.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
+    try {
+      parsed = format.parse(text) as T;
+    } catch {
+      parsed = null;
+    }
+  }
+  if (parsed == null) throw new Error('AI の出力を読み取れませんでした');
   const inputTokens = res.usage.input_tokens + (res.usage.cache_read_input_tokens ?? 0) + (res.usage.cache_creation_input_tokens ?? 0);
   const outputTokens = res.usage.output_tokens;
-  return { data: res.parsed_output as T, usage: { inputTokens, outputTokens, costUsd: estimateCostUsd(model, inputTokens, outputTokens) } };
+  return { data: parsed, usage: { inputTokens, outputTokens, costUsd: estimateCostUsd(model, inputTokens, outputTokens) } };
 }
 
 function describe(e: Expression): string {
@@ -192,7 +219,7 @@ const SuggestSchema = z.object({
         importance: z.number().int().describe('0-100 for this learner'),
         examples: z
           .array(z.object({ kind: z.enum(['business', 'daily', 'alternative']), en: z.string(), ja: z.string() }))
-          .describe('Exactly 3: business, daily, alternative'),
+          .describe('Exactly 1 short business example. (More examples are written later, only for the ones the learner adds.)'),
       }),
     )
     .describe('Candidates, best first'),
@@ -222,7 +249,15 @@ export interface SuggestContext {
  * Today's suggestions. Sends only expression texts (library sample and past
  * decisions) — no meanings, notes, or review history.
  */
-export async function suggestExpressions(ctx: SuggestContext): Promise<{ items: SuggestedItem[]; usage: GenerateUsage; model: string }> {
+/** Count of candidates the streamed JSON has started so far. */
+export function countStartedItems(snapshot: string): number {
+  return (snapshot.match(/"text"\s*:/g) ?? []).length;
+}
+
+export async function suggestExpressions(
+  ctx: SuggestContext,
+  onProgress?: (started: number) => void,
+): Promise<{ items: SuggestedItem[]; usage: GenerateUsage; model: string }> {
   const list = (xs: string[]) => (xs.length ? xs.join(' | ') : '(none)');
   const prompt = [
     `Suggest ${ctx.count} English expressions this learner should add to their study list today.`,
@@ -241,9 +276,13 @@ export async function suggestExpressions(ctx: SuggestContext): Promise<{ items: 
     `Suggested before but the learner already knew them (suggest slightly more advanced ones): ${list(ctx.known)}`,
     `Suggested before but not wanted (avoid this kind): ${list(ctx.rejected)}`,
     '',
-    'For each: the expression, a concise Japanese meaning, one Japanese sentence on why it is useful for this learner, category, importance, and 3 examples (business, daily, alternative) following the example-sentence rules.',
+    'For each: the expression, a concise Japanese meaning, one Japanese sentence on why it is useful for this learner, category, importance, and ONE short business example (with Japanese) following the example-sentence rules.',
   ].join('\n');
-  const { data, usage } = await call(SuggestSchema, prompt);
+  // Choosing expressions needs little deliberation: low effort and a streamed reply keep it quick.
+  const { data, usage } = await call(SuggestSchema, prompt, {
+    effort: 'low',
+    onText: onProgress ? (snap) => onProgress(countStartedItems(snap)) : undefined,
+  });
   return { items: data.suggestions, usage, model: getAiModel() };
 }
 
@@ -266,6 +305,7 @@ const CaptureSchema = z.object({
  * words and the one sentence they were found in.
  */
 export async function analyzeCaptured(selection: string, sentence: string): Promise<{ result: CaptureAi; usage: GenerateUsage }> {
+  if (!sentence.trim()) return analyzeTyped(selection);
   const prompt = [
     `The learner found this expression in a real text and wants to study it: "${selection}"`,
     `Sentence it appeared in: ${sentence}`,
@@ -287,4 +327,65 @@ export async function analyzeCaptured(selection: string, sentence: string): Prom
       model: getAiModel(),
     },
   };
+}
+
+/** Typed in directly, without a sentence: meaning, 3 examples, pronunciation for the first. */
+async function analyzeTyped(text: string): Promise<{ result: CaptureAi; usage: GenerateUsage }> {
+  const { data, usage } = await call(
+    ExamplesSchema,
+    `Expression: ${text}\nLearner has no meaning yet.\n\nWrite the category, importance, Japanese meaning, 3 examples and a pronunciation guide for the first example.`,
+  );
+  const examples = data.examples.slice(0, 3).map((x) => ({ kind: x.kind, en: x.en.trim(), ja: x.ja.trim() }));
+  return {
+    usage,
+    result: {
+      baseForm: text,
+      meaning: data.meaning_ja.trim(),
+      category: data.category as Category,
+      importance: data.importance,
+      sentenceJa: '',
+      examples,
+      pronunciation: examples[0] ? toGuide(data.pronunciation, examples[0].en) : undefined,
+      model: getAiModel(),
+    },
+  };
+}
+
+const MoreSchema = z.object({
+  examples: z
+    .array(z.object({ kind: z.enum(['business', 'daily', 'alternative']), en: z.string(), ja: z.string() }))
+    .describe('The requested number of NEW examples, of the requested kinds'),
+  pronunciation: PronSchema.describe('Pronunciation guide for the FIRST existing example sentence, exactly as written'),
+});
+
+/**
+ * Fill an expression up to 3 examples (keeping the ones it has) and add a
+ * pronunciation guide to its first example if missing. Used after adding a
+ * suggestion, which comes with a single example to keep suggestions fast.
+ */
+export async function completeExamples(expressionId: string): Promise<GenerateUsage | null> {
+  const e = await db.expressions.get(expressionId);
+  if (!e || e.examples.length === 0) return e ? generateExamples(expressionId) : null;
+  const have = new Set(e.examples.map((x) => x.kind));
+  const missing = (['business', 'daily', 'alternative'] as const).filter((k) => !have.has(k)).slice(0, Math.max(0, 3 - e.examples.length));
+  const first = e.examples[0];
+  if (missing.length === 0 && first.pronunciation) return null;
+  const prompt = [
+    describe(e),
+    `Existing examples:\n${e.examples.map((x) => `- (${x.kind}) ${x.en}`).join('\n')}`,
+    missing.length ? `Write ${missing.length} new example(s), kinds: ${missing.join(', ')}.` : 'Write no new examples (empty list).',
+    `Write the pronunciation guide for this exact sentence: ${first.en}`,
+  ].join('\n\n');
+  const { data, usage } = await call(MoreSchema, prompt);
+  await db.transaction('rw', db.expressions, async () => {
+    const cur = await db.expressions.get(expressionId);
+    if (!cur) return;
+    const added: Example[] = data.examples
+      .filter((x) => x.en.trim())
+      .slice(0, Math.max(0, 3 - cur.examples.length))
+      .map((x) => ({ id: uid(), kind: x.kind, en: x.en.trim(), ja: x.ja.trim(), origin: 'ai' as const, status: 'unverified' as const }));
+    const examples = cur.examples.map((x, i) => (i === 0 && !x.pronunciation ? { ...x, pronunciation: toGuide(data.pronunciation, x.en) } : x));
+    await db.expressions.put({ ...cur, examples: [...examples, ...added], updatedAt: nowIso() });
+  });
+  return usage;
 }

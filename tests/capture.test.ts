@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db, useDatabase } from '../src/db/db';
 import {
-  addCaptured, CAPTURED_IMPORTANCE, CAPTURE_TAG, findExisting, nextSelection, selectionText, sentenceAround, tokenize, unstartedCount, type CaptureAi,
+  addCaptured, CAPTURED_IMPORTANCE, CAPTURE_TAG, findExisting, isWholeSentence, nextSelection, selectionText, sentenceAround, sentenceRange, tokenize, unstartedCount, type CaptureAi,
 } from '../src/lib/capture';
 import { addSampleDeck } from '../src/lib/sample';
 import { startOrResumeSession } from '../src/srs/session';
@@ -33,6 +33,13 @@ describe('picking words from pasted text', () => {
     const boil = tokens.indexOf('boil');
     expect(sentenceAround(tokens, { a: boil, b: boil + 2 })).toBe("I don't want to boil the ocean here, e.g. by redoing every model.");
     expect(sentenceAround(['no', 'end', 'mark'], { a: 1, b: 1 })).toBe('no end mark');
+  });
+  it('whole-sentence selection and detection', () => {
+    expect(sentenceRange(tokens, { a: 0, b: 0 })).toEqual({ a: 0, b: 1 }); // "Thanks all."
+    const r = sentenceRange(tokens, { a: 5, b: 5 });
+    expect(selectionText(tokens, r)).toBe('Can we table the discussion on pricing until we have the merchant data');
+    expect(isWholeSentence(selectionText(tokens, r), sentenceAround(tokens, r))).toBe(true);
+    expect(isWholeSentence('table the discussion', sentenceAround(tokens, r))).toBe(false);
   });
 });
 
@@ -94,5 +101,35 @@ describe('adding a captured expression', () => {
     expect(await unstartedCount()).toBe(before + 1);
     const s = await startOrResumeSession(10);
     expect(s.queue[0]).toBe(`${id}:recognition`);
+  });
+});
+
+describe('pronunciation guide placement', () => {
+  let m = 0;
+  beforeEach(async () => {
+    await db.close();
+    useDatabase('capture-pron-' + m++);
+    await db.open();
+  });
+  const guide = (text: string) => ({ level1: { text }, origin: 'ai' as const, status: 'needs_review' as const });
+  const base = { baseForm: 'x', meaning: 'm', category: 'business' as const, importance: 50, sentenceJa: '', model: 't' };
+
+  it('goes on the found sentence when it is kept, and is dropped when it is not', async () => {
+    const s = 'We circulated the memo.';
+    const ai: CaptureAi = { ...base, examples: [{ kind: 'daily', en: 'Ideas circulate.', ja: 'j' }], pronunciation: guide(s) };
+    const id = await addCaptured({ text: 'circulate', sentence: s, keepSentence: true, ai });
+    const e = (await db.expressions.get(id))!;
+    expect(e.examples[0].pronunciation?.level1.text).toBe(s);
+    expect(e.examples[1].pronunciation).toBeUndefined();
+    const id2 = await addCaptured({ text: 'memo', sentence: s, keepSentence: false, ai });
+    expect((await db.expressions.get(id2))!.examples.every((x) => !x.pronunciation)).toBe(true);
+  });
+
+  it('goes on the first AI example for a typed expression', async () => {
+    const ai: CaptureAi = { ...base, examples: [{ kind: 'business', en: 'Please circulate it.', ja: 'j' }, { kind: 'daily', en: 'b', ja: 'j' }], pronunciation: guide('Please circulate it.') };
+    const id = await addCaptured({ text: 'circulate', sentence: '', keepSentence: false, ai });
+    const e = (await db.expressions.get(id))!;
+    expect(e.examples.map((x) => x.origin)).toEqual(['ai', 'ai']);
+    expect(e.examples[0].pronunciation?.level1.text).toBe('Please circulate it.');
   });
 });

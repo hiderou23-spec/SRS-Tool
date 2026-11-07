@@ -7,10 +7,12 @@ import { recordUsage } from '../components/AiPanel';
 import {
   addCaptured,
   findExisting,
+  isWholeSentence,
   MAX_CAPTURE_CHARS,
   nextSelection,
   selectionText,
   sentenceAround,
+  sentenceRange,
   tokenize,
   unstartedCount,
   type CaptureAi,
@@ -18,6 +20,8 @@ import {
 } from '../lib/capture';
 
 interface Draft {
+  /** 'paste': picked from pasted text; 'typed': entered directly. */
+  source: 'paste' | 'typed';
   selection: string;
   sentence: string;
   text: string;
@@ -105,24 +109,28 @@ function AddSheet({ draft, setDraft, onClose, onAdded }: { draft: Draft; setDraf
           </div>
         )}
 
-        <div>
-          <div className="small" style={{ fontWeight: 600, color: 'var(--ink-2)', marginBottom: 6 }}>見つけた文</div>
+        {draft.sentence && <div>
+          <div className="small" style={{ fontWeight: 600, color: 'var(--ink-2)', marginBottom: 6 }}>{draft.source === 'typed' ? '入力した例文' : '見つけた文'}</div>
           <div className="capture-sentence">{draft.sentence}</div>
           {draft.ai?.sentenceJa && <div className="small muted" style={{ marginTop: 4 }}>{draft.ai.sentenceJa} <span className="ai-tag">AI</span></div>}
           <label className="row small" style={{ marginTop: 8 }}>
             <input type="checkbox" checked={draft.keepSentence} onChange={(e) => update({ keepSentence: e.target.checked })} style={{ width: 20, height: 20, accentColor: 'var(--accent)' }} />
             この文を例文として保存する
           </label>
-        </div>
+        </div>}
 
         <div className="stack">
-          <div className="small" style={{ fontWeight: 600, color: 'var(--ink-2)' }}>意味と残りの例文</div>
+          <div className="small" style={{ fontWeight: 600, color: 'var(--ink-2)' }}>{draft.sentence ? '意味と残りの例文' : '意味と例文'}</div>
           <label className={draft.how === 'ai' ? 'capture-option on' : 'capture-option'}>
             <input type="radio" name="how" checked={draft.how === 'ai'} disabled={!hasKey} onChange={() => (draft.ai ? update({ how: 'ai' }) : runAi())} />
             <span className="grow">
               <b>AIに作ってもらう</b>
               <span className="tiny muted" style={{ display: 'block' }}>
-                {hasKey ? '原形・意味・例文2つ・発音ガイド（AI・要確認）。選んだ語と、それを含む1文だけを送ります' : 'Settings → AI 生成 で API キーを保存すると使えます'}
+                {!hasKey
+                  ? 'Settings → AI 生成 で API キーを保存すると使えます'
+                  : draft.sentence
+                    ? `原形・意味・例文2つ・発音ガイド（AI・要確認）。${draft.source === 'typed' ? '入力した表現と例文' : '選んだ語と、それを含む1文'}だけを送ります`
+                    : '意味・例文3つ・発音ガイド（AI・要確認）。入力した表現だけを送ります'}
               </span>
               {draft.how === 'ai' && draft.aiLoading && <span className="small" style={{ display: 'block', marginTop: 6 }}>AIが確認しています…</span>}
               {draft.how === 'ai' && draft.aiError && (
@@ -157,6 +165,8 @@ export default function Capture() {
   const [sel, setSel] = useState<Selection | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [added, setAdded] = useState<string[]>([]);
+  const [typed, setTyped] = useState('');
+  const [typedExample, setTypedExample] = useState('');
   const unstarted = useLiveQuery(() => unstartedCount(), []);
   const tokens = useMemo(() => tokenize(raw), [raw]);
   const selected = selectionText(tokens, sel);
@@ -176,24 +186,31 @@ export default function Capture() {
     }
   };
 
-  const openSheet = async () => {
-    if (!sel || !selected) return;
-    const sentence = sentenceAround(tokens, sel);
+  const open = async (source: Draft['source'], selection: string, sentence: string) => {
+    if (!selection) return;
     // Already in the library: say so and don't spend an AI call on it.
-    const existing = (await findExisting(selected)) ?? null;
+    const existing = (await findExisting(selection)) ?? null;
     const useAi = !!getApiKey() && !existing;
     const base: Draft = {
-      selection: selected, sentence, text: selected, keepSentence: true,
+      source, selection, sentence, text: selection,
+      // A whole sentence added as the expression doesn't need itself as an example.
+      keepSentence: !!sentence && !isWholeSentence(selection, sentence),
       how: getApiKey() ? 'ai' : 'manual', meaning: '', ai: null, aiLoading: useAi, aiError: '', existing,
     };
     setDraft(base);
-    if (useAi) startAi(setDraft, selected, sentence);
+    if (useAi) startAi(setDraft, selection, sentence);
+  };
+  const openSheet = () => sel && open('paste', selected, sentenceAround(tokens, sel));
+  const openTyped = () => open('typed', typed.trim(), typedExample.trim());
+  const selectWholeSentence = () => {
+    if (tokens.length === 0) return;
+    setSel(sentenceRange(tokens, sel ?? { a: 0, b: 0 }));
   };
 
   return (
     <main className="page">
       <a className="btn ghost sm" href="#/library" style={{ paddingLeft: 0 }}>‹ Library</a>
-      <h1 className="page-title" style={{ marginTop: 4 }}>コピーした文から追加</h1>
+      <h1 className="page-title" style={{ marginTop: 4 }}>表現を追加</h1>
 
       {!picking ? (
         <div className="card stack">
@@ -209,13 +226,33 @@ export default function Capture() {
           <button className="btn block" disabled={tokens.length === 0} onClick={() => { setSel(null); setPicking(true); }}>この文から選ぶ</button>
           <p className="tiny muted" style={{ margin: 0 }}>貼り付けた文はこの画面でだけ使います。保存されるのは、選んだ語を含む1文だけです。</p>
         </div>
-      ) : (
+      ) : null}
+
+      {!picking && (
+        <div className="card stack">
+          <h2 style={{ margin: 0 }}>単語・表現を直接入力</h2>
+          <label className="field" style={{ marginBottom: 0 }}>
+            <span>単語・フレーズ・文</span>
+            <input className="input capture-expr" placeholder="例：circulate / table the discussion" value={typed} onChange={(e) => setTyped(e.target.value)} autoCapitalize="off" autoCorrect="off" spellCheck={false} />
+          </label>
+          <label className="field" style={{ marginBottom: 0 }}>
+            <span>例文（任意）</span>
+            <textarea className="textarea" rows={2} placeholder="実際に見聞きした文があれば。なければAIが例文を作ります" value={typedExample} onChange={(e) => setTypedExample(e.target.value)} />
+          </label>
+          <button className="btn primary block" disabled={!typed.trim()} onClick={openTyped}>追加へ進む</button>
+        </div>
+      )}
+
+      {!picking ? null : (
         <>
           <p className="small muted" style={{ margin: '0 0 10px' }}>登録したい単語をタップしてください。続けて別の単語をタップすると、その間の語もまとめて選べます。</p>
           <div className="card">
             <div className="row between" style={{ marginBottom: 6 }}>
               <span className="tiny muted" style={{ fontWeight: 600 }}>貼り付けた文</span>
-              <button className="btn ghost sm" onClick={() => { setPicking(false); setSel(null); }}>貼り付け直す</button>
+              <div className="row" style={{ gap: 0 }}>
+                <button className="btn ghost sm" onClick={selectWholeSentence}>文全体を選ぶ</button>
+                <button className="btn ghost sm" onClick={() => { setPicking(false); setSel(null); }}>貼り付け直す</button>
+              </div>
             </div>
             <div className="capture-text">
               {tokens.map((t, i) => {
@@ -235,9 +272,10 @@ export default function Capture() {
           ) : (
             <p className="small muted" style={{ margin: '4px 4px 0' }}>まだ何も選ばれていません。</p>
           )}
-          {added.length > 0 && <p className="small" style={{ margin: '14px 4px 0' }}>追加しました：{added.join('、')}</p>}
         </>
       )}
+
+      {added.length > 0 && <p className="small" style={{ margin: '14px 4px 0' }}>追加しました：{added.join('、')}</p>}
 
       {unstarted !== undefined && unstarted > 0 && (
         <p className="tiny muted" style={{ margin: '14px 4px 0' }}>今、まだ学習していない表現が {unstarted.toLocaleString()}語 あります。</p>
@@ -253,6 +291,8 @@ export default function Capture() {
             setAdded((xs) => [...xs, text]);
             setDraft(null);
             setSel(null);
+            setTyped('');
+            setTypedExample('');
           }}
         />
       )}

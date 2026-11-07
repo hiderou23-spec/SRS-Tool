@@ -104,7 +104,7 @@ export default function Library() {
           <h1 className="page-title" style={{ margin: 0 }}>Library</h1>
           <button className="btn sm" onClick={createNew}>＋ 追加</button>
         </div>
-        <a className="btn block capture-entry" href="#/capture">コピーした文から追加</a>
+        <a className="btn block capture-entry" href="#/capture">コピーした文・直接入力から追加</a>
         <input className="input" type="search" placeholder="英語・日本語・メモで検索" value={q} onChange={(e) => { setQ(e.target.value); setLimit(PAGE); }} autoCapitalize="off" autoCorrect="off" spellCheck={false} />
         <div className="row" style={{ marginTop: 8, overflowX: 'auto', gap: 6, paddingBottom: 2 }}>
           {FILTERS.map((f) => (
