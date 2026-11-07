@@ -76,11 +76,15 @@ export function lastDecidedSet(past: Suggestion[]): { key: string; size: number;
     const k = batchKey(s);
     sets.set(k, [...(sets.get(k) ?? []), s]);
   }
-  let best: { key: string; at: string; size: number; known: number } | null = null;
+  let best: { key: string; day: string; batch: number; size: number; known: number } | null = null;
   for (const [key, xs] of sets) {
     if (xs.some((x) => x.status === 'pending')) continue;
-    const at = xs.reduce((m, x) => (x.createdAt > m ? x.createdAt : m), '');
-    if (!best || at > best.at) best = { key, at, size: xs.length, known: xs.filter((x) => x.status === 'known').length };
+    // Latest = latest day, then highest set number on that day (not timestamps, which can tie).
+    const day = xs[0].day;
+    const batch = batchOf(xs[0]);
+    if (!best || day > best.day || (day === best.day && batch > best.batch)) {
+      best = { key, day, batch, size: xs.length, known: xs.filter((x) => x.status === 'known').length };
+    }
   }
   return best && { key: best.key, size: best.size, known: best.known };
 }
@@ -111,7 +115,8 @@ export async function todayKey(now = new Date()): Promise<string> {
 
 export async function suggestionsForDay(day: string): Promise<Suggestion[]> {
   const xs = await db.suggestions.where('day').equals(day).toArray();
-  return xs.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  // By set first: two sets requested within a few ms would otherwise interleave.
+  return xs.sort((a, b) => (a.batch ?? 1) - (b.batch ?? 1) || a.createdAt.localeCompare(b.createdAt));
 }
 
 /** Context for the AI request (texts only). */
