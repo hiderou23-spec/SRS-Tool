@@ -76,11 +76,15 @@ export function lastDecidedSet(past: Suggestion[]): { key: string; size: number;
     const k = batchKey(s);
     sets.set(k, [...(sets.get(k) ?? []), s]);
   }
-  let best: { key: string; at: string; size: number; known: number } | null = null;
+  let best: { key: string; day: string; batch: number; size: number; known: number } | null = null;
   for (const [key, xs] of sets) {
     if (xs.some((x) => x.status === 'pending')) continue;
-    const at = xs.reduce((m, x) => (x.createdAt > m ? x.createdAt : m), '');
-    if (!best || at > best.at) best = { key, at, size: xs.length, known: xs.filter((x) => x.status === 'known').length };
+    // Latest = latest day, then highest set number on that day (not timestamps, which can tie).
+    const day = xs[0].day;
+    const batch = batchOf(xs[0]);
+    if (!best || day > best.day || (day === best.day && batch > best.batch)) {
+      best = { key, day, batch, size: xs.length, known: xs.filter((x) => x.status === 'known').length };
+    }
   }
   return best && { key: best.key, size: best.size, known: best.known };
 }
@@ -111,7 +115,8 @@ export async function todayKey(now = new Date()): Promise<string> {
 
 export async function suggestionsForDay(day: string): Promise<Suggestion[]> {
   const xs = await db.suggestions.where('day').equals(day).toArray();
-  return xs.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  // By set first: two sets requested within a few ms would otherwise interleave.
+  return xs.sort((a, b) => (a.batch ?? 1) - (b.batch ?? 1) || a.createdAt.localeCompare(b.createdAt));
 }
 
 /** Context for the AI request (texts only). */
@@ -176,7 +181,20 @@ export interface SuggestResult {
  * Settings.suggestionBatchesPerDay). The level goes up automatically when most of the last
  * set was already known.
  */
-export async function requestTodaysSuggestions(now = new Date(), opts: { more?: boolean } = {}): Promise<SuggestResult> {
+/**
+ * Progress (0–100) while a set is being requested. Before the first candidate
+ * appears the AI is thinking: creep up to 15% over ~8 s. Then each candidate
+ * started in the streamed reply moves the bar, capped at 95% until saved.
+ */
+export function suggestionProgress(started: number, elapsedMs: number, total = ASK_COUNT): number {
+  if (started <= 0) return Math.round(Math.min(15, (elapsedMs / 8000) * 15));
+  return Math.round(Math.min(95, 15 + ((Math.min(started, total) - 0.5) / total) * 80));
+}
+
+export async function requestTodaysSuggestions(
+  now = new Date(),
+  opts: { more?: boolean; onProgress?: (started: number) => void } = {},
+): Promise<SuggestResult> {
   const settings = await getSettings();
   const day = dayKey(now, settings.dayStartHour);
   const existing = await suggestionsForDay(day);
@@ -190,7 +208,7 @@ export async function requestTodaysSuggestions(now = new Date(), opts: { more?: 
     await saveSettings({ suggestionLevel: lv.level, suggestionLevelBasis: lv.basis });
   }
   const { suggestExpressions } = await import('./aiGenerate');
-  const { items, usage, model } = await suggestExpressions(buildContext(expressions, past, lv.level));
+  const { items, usage, model } = await suggestExpressions(buildContext(expressions, past, lv.level), opts.onProgress);
 
   const taken = new Set([...expressions.map((e) => e.normalized), ...past.map((s) => s.normalized)]);
   const picked = pickNew(items, taken, DAILY_SUGGESTIONS);
