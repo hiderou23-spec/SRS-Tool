@@ -152,3 +152,41 @@ describe('batch registration', () => {
     expect((await db.expressions.get(id))!.text).toBe('circulated');
   });
 });
+
+describe('study now', () => {
+  let q = 0;
+  beforeEach(async () => {
+    await db.close();
+    useDatabase('study-now-' + q++);
+    await db.open();
+  });
+
+  it('starts a short session of just the added Reading cards, past the daily new limit', async () => {
+    const { saveSettings } = await import('../src/db/db');
+    const { studyNow, getActiveSession } = await import('../src/srs/session');
+    await saveSettings({ newPerDay: 0 });
+    const a = await addCaptured({ text: 'circulate', sentence: 'x.', keepSentence: false, meaning: 'm' });
+    const b = await addCaptured({ text: 'leverage', sentence: 'x.', keepSentence: false, meaning: 'm' });
+    const s = (await studyNow([a, b]))!;
+    expect(s.queue).toEqual([`${a}:recognition`, `${b}:recognition`]);
+    expect((await getActiveSession())!.id).toBe(s.id);
+  });
+
+  it("goes to the front of today's open session, without duplicates", async () => {
+    const { studyNow, startOrResumeSession } = await import('../src/srs/session');
+    await addSampleDeck();
+    const open = await startOrResumeSession(10);
+    const before = [...open.queue];
+    const a = await addCaptured({ text: 'circulate', sentence: 'x.', keepSentence: false, meaning: 'm' });
+    const s = (await studyNow([a, a]))!;
+    expect(s.id).toBe(open.id);
+    expect(s.queue).toEqual([`${a}:recognition`, ...before.filter((x) => x !== `${a}:recognition`)]);
+  });
+
+  it('skips cards already studied or excluded; nothing left → null', async () => {
+    const { studyNow } = await import('../src/srs/session');
+    const a = await addCaptured({ text: 'circulate', sentence: 'x.', keepSentence: false, meaning: 'm' });
+    await db.expressions.update(a, { suspended: true });
+    expect(await studyNow([a])).toBeNull();
+  });
+});

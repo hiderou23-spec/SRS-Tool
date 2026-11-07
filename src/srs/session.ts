@@ -85,6 +85,45 @@ export async function startOrResumeSession(minutes?: number, now = new Date()): 
 }
 
 /**
+ * "今すぐ学習": study just-added expressions right away (their Reading cards).
+ * They go to the front of today's open session, or make a short session of
+ * their own. The learner chose them, so the daily new-card limit doesn't hold
+ * them back (they still count as introduced today).
+ */
+export async function studyNow(expressionIds: string[], now = new Date()): Promise<StudySession | null> {
+  const settings = await getSettings();
+  const unique = [...new Set(expressionIds)];
+  const cards = await db.cards.bulkGet(unique.map((id) => `${id}:recognition`));
+  const exprs = await db.expressions.bulkGet(unique);
+  const ids = cards
+    .filter((c, i): c is NonNullable<typeof c> => !!c && c.introducedAt === null && !!exprs[i] && !exprs[i]!.suspended)
+    .map((c) => c.id);
+  if (ids.length === 0) return null;
+  const today = dayKey(now, settings.dayStartHour);
+  const active = await getActiveSession(today);
+  if (active) {
+    active.queue = [...ids, ...active.queue.filter((id) => !ids.includes(id))];
+    active.done = active.done.filter((id) => !ids.includes(id));
+    await db.sessions.put(active);
+    return active;
+  }
+  const session: StudySession = {
+    id: uid(),
+    startedAt: now.toISOString(),
+    endedAt: null,
+    targetMinutes: settings.sessionMinutes,
+    activeMs: 0,
+    queue: ids,
+    done: [],
+    reviewedCount: 0,
+    newCount: 0,
+    day: today,
+  };
+  await db.sessions.put(session);
+  return session;
+}
+
+/**
  * 1-minute mode: a fresh, very short session. An open session from earlier
  * today is closed first; nothing is lost because every answer is already
  * saved and its unanswered cards stay due.
