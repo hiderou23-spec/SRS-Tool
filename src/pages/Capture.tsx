@@ -21,6 +21,9 @@ import {
   type CaptureAi,
 } from '../lib/capture';
 import { clearQueueSummary, enqueueCaptureAi, useCaptureQueue } from '../lib/captureQueue';
+import { db } from '../db/db';
+import { navigate } from '../lib/router';
+import { studyNow } from '../srs/session';
 
 interface Draft {
   selection: string;
@@ -51,7 +54,7 @@ function startAi(setDraft: SetDraft, selection: string, sentence: string) {
     .catch((err) => setDraft((d) => (mine(d) ? { ...d!, aiLoading: false, aiError: friendlyError(err) } : d)));
 }
 
-function AddSheet({ draft, setDraft, onClose, onAdded }: { draft: Draft; setDraft: SetDraft; onClose: () => void; onAdded: (text: string) => void }) {
+function AddSheet({ draft, setDraft, onClose, onAdded }: { draft: Draft; setDraft: SetDraft; onClose: () => void; onAdded: (text: string, id: string) => void }) {
   const [busy, setBusy] = useState(false);
   const hasKey = !!getApiKey();
   const update = (patch: Partial<Draft>) => setDraft((d) => (d ? { ...d, ...patch } : d));
@@ -72,14 +75,14 @@ function AddSheet({ draft, setDraft, onClose, onAdded }: { draft: Draft; setDraf
   const add = async () => {
     setBusy(true);
     try {
-      await addCaptured({
+      const id = await addCaptured({
         text: draft.text,
         sentence: draft.sentence,
         keepSentence: draft.keepSentence,
         meaning: draft.how === 'manual' ? draft.meaning : '',
         ai: draft.how === 'ai' && draft.ai ? draft.ai : undefined,
       });
-      onAdded(draft.text);
+      onAdded(draft.text, id);
     } catch (err) {
       toast(friendlyError(err));
     } finally {
@@ -198,12 +201,52 @@ function QueueStatus() {
   );
 }
 
+/**
+ * Just-added expressions and "今すぐ学習". Waits for the background AI to
+ * finish them first (a Reading card without a meaning has nothing to reveal).
+ */
+function JustAdded({ ids, names, onStarted }: { ids: string[]; names: string[]; onStarted: () => void }) {
+  const q = useCaptureQueue();
+  const [busy, setBusy] = useState(false);
+  const exprs = useLiveQuery(() => db.expressions.bulkGet(ids), [ids.join(',')]);
+  if (ids.length === 0) return null;
+  const hasKey = !!getApiKey();
+  const waitingAi = hasKey && q.running && (exprs ?? []).some((e) => e && !e.meaning && !e.ai);
+  const start = async () => {
+    setBusy(true);
+    try {
+      const s = await studyNow(ids);
+      if (!s) {
+        toast('学習できるカードがありません（学習済み、または学習から外しています）');
+        return;
+      }
+      onStarted();
+      navigate('study');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="card stack" style={{ marginTop: 14 }}>
+      {/* Current names: the AI may have changed them to the base form meanwhile. */}
+      <div className="small">追加しました：{(exprs ? exprs.map((e, i) => e?.text ?? names[i]) : names).join('、')}</div>
+      <button className="btn primary block lg" disabled={busy || waitingAi} onClick={start}>
+        {waitingAi ? 'AIが意味を作っています…' : `追加した${ids.length}件を今すぐ学習`}
+      </button>
+      <p className="tiny muted" style={{ margin: 0 }}>
+        文脈を覚えているうちに一度思い出すと、記憶に残りやすくなります。1日の新規上限とは別に学習できます（今日学んだ数には含まれます）。
+      </p>
+    </div>
+  );
+}
+
 export default function Capture() {
   const [raw, setRaw] = useState('');
   const [picking, setPicking] = useState(false);
   const [chosen, setChosen] = useState<Set<number>>(() => new Set());
   const [draft, setDraft] = useState<Draft | null>(null);
   const [added, setAdded] = useState<string[]>([]);
+  const [addedIds, setAddedIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const unstarted = useLiveQuery(() => unstartedCount(), []);
   const keys = useLiveQuery(() => libraryKeys(), []);
@@ -255,6 +298,7 @@ export default function Capture() {
       const names = plan.filter((p) => p.status === 'new').map((p) => p.text);
       toast(`${ids.length}件を登録しました`);
       setAdded((xs) => [...xs, ...names]);
+      setAddedIds((xs) => [...xs, ...ids]);
       reset();
       if (ids.length && hasKey) {
         clearQueueSummary();
@@ -344,7 +388,7 @@ export default function Capture() {
         </>
       )}
 
-      {added.length > 0 && <p className="small" style={{ margin: '14px 4px 0' }}>追加しました：{added.join('、')}</p>}
+      <JustAdded ids={addedIds} names={added} onStarted={() => { setAdded([]); setAddedIds([]); }} />
 
       {unstarted !== undefined && unstarted > 0 && (
         <p className="tiny muted" style={{ margin: '14px 4px 0' }}>今、まだ学習していない表現が {unstarted.toLocaleString()}語 あります。</p>
@@ -355,9 +399,10 @@ export default function Capture() {
           draft={draft}
           setDraft={setDraft}
           onClose={() => setDraft(null)}
-          onAdded={(text) => {
+          onAdded={(text, id) => {
             toast(`「${text}」を追加しました`);
             setAdded((xs) => [...xs, text]);
+            setAddedIds((xs) => [...xs, id]);
             setDraft(null);
             reset();
           }}
