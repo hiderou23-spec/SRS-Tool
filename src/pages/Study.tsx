@@ -13,6 +13,8 @@ import { highlight } from '../components/Highlight';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { encouragementFor } from '../lib/encouragement';
 import { hintSteps, type HintStep } from '../srs/hint';
+import { ensurePronunciation } from '../lib/pronOnOpen';
+import { friendlyError, getApiKey } from '../lib/aiConfig';
 import { VocabSessionSummary } from '../components/Vocab';
 import { TodayList } from '../components/TodayList';
 
@@ -25,8 +27,27 @@ const RATINGS: { v: RatingValue; label: string; cls: string }[] = [
 
 const KIND_LABEL: Record<string, string> = { business: 'Business', daily: 'Daily', alternative: 'Alternative' };
 
-function ExampleBlock({ ex, expr, open, onToggle, hideJa }: { ex: Example; expr: string; open: boolean; onToggle: () => void; hideJa?: boolean }) {
+function ExampleBlock({ ex, expr, expressionId, open, onToggle, onUpdated, hideJa }: {
+  ex: Example; expr: string; expressionId: string; open: boolean; onToggle: () => void; onUpdated: () => void; hideJa?: boolean;
+}) {
   const settings = useSettings();
+  const hasKey = !!getApiKey();
+  const [pron, setPron] = useState<{ state: 'idle' | 'loading' | 'error'; msg?: string }>({ state: 'idle' });
+  const generate = useCallback(() => {
+    setPron({ state: 'loading' });
+    ensurePronunciation(expressionId, ex.id)
+      .then((made) => {
+        setPron({ state: 'idle' });
+        if (made) onUpdated();
+      })
+      .catch((err) => setPron({ state: 'error', msg: friendlyError(err) }));
+  }, [expressionId, ex.id, onUpdated]);
+  // Opened with no guide yet: write one now (once).
+  useEffect(() => {
+    if (open && !ex.pronunciation && hasKey && pron.state === 'idle') generate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, ex.pronunciation, hasKey]);
+  const missing = !ex.pronunciation;
   return (
     <div className="example">
       <div className="en">{highlight(ex.en, expr)}</div>
@@ -36,10 +57,20 @@ function ExampleBlock({ ex, expr, open, onToggle, hideJa }: { ex: Example; expr:
         {ex.origin === 'ai' && ex.status !== 'verified' && <span className="ai-tag" title="AIが作成（未確認）">AI</span>}
       </div>
       <button className="disclosure" aria-expanded={open} onClick={onToggle}>
-        <span>発音ガイド{ex.pronunciation ? '' : '（未登録）'}</span>
+        <span>発音ガイド{missing ? (hasKey ? '（開くと作成）' : '（未登録）') : ''}</span>
         <IconChevron />
       </button>
-      {open && <PronunciationView guide={ex.pronunciation} sentence={ex.en} settings={settings} compact />}
+      {open && missing && pron.state === 'loading' && <div className="pron small muted" role="status">発音ガイドを作っています…（数秒）</div>}
+      {open && missing && pron.state === 'error' && (
+        <div className="pron small">
+          <span style={{ color: 'var(--again)' }}>作れませんでした：{pron.msg}</span>{' '}
+          <button className="btn ghost sm" onClick={generate}>再試行</button>
+        </div>
+      )}
+      {open && missing && !hasKey && (
+        <div className="pron small muted">この例文の発音ガイドはまだありません。Settings → AI 生成 で API キーを保存すると、ここを開いたときに自動で作ります（編集画面で手入力もできます）。</div>
+      )}
+      {open && !missing && <PronunciationView guide={ex.pronunciation} sentence={ex.en} settings={settings} compact />}
     </div>
   );
 }
@@ -218,6 +249,16 @@ export default function Study() {
   };
 
   const intervals = useMemo(() => (card ? previewIntervals(settings, card.fsrs) : null), [card, settings]);
+
+  /** Re-read the current expression (e.g. a pronunciation guide was just written). */
+  const reloadExpr = useCallback(() => {
+    const id = expr?.id;
+    if (!id) return;
+    void db.expressions.get(id).then((e) => {
+      // Only if the learner is still on that card.
+      if (e) setExpr((prev) => (prev && prev.id === e.id ? e : prev));
+    });
+  }, [expr?.id]);
 
   const elapsedMs = (session?.activeMs ?? 0) + (card && session?.queue.length ? Math.min(60_000, cardElapsed()) : 0);
   const targetMs = (session?.targetMinutes ?? settings.sessionMinutes) * 60_000;
@@ -413,7 +454,7 @@ export default function Study() {
               </div>
             )}
 
-            {mainEx && <ExampleBlock ex={mainEx} expr={expr.text} hideJa={sentenceMode} open={pronOpen === mainEx.id} onToggle={() => setPronOpen(pronOpen === mainEx.id ? null : mainEx.id)} />}
+            {mainEx && <ExampleBlock ex={mainEx} expr={expr.text} expressionId={expr.id} onUpdated={reloadExpr} hideJa={sentenceMode} open={pronOpen === mainEx.id} onToggle={() => setPronOpen(pronOpen === mainEx.id ? null : mainEx.id)} />}
 
             {others.length > 0 && (
               <>
@@ -422,7 +463,7 @@ export default function Study() {
                   <IconChevron />
                 </button>
                 {moreOpen && others.map((ex) => (
-                  <ExampleBlock key={ex.id} ex={ex} expr={expr.text} open={pronOpen === ex.id} onToggle={() => setPronOpen(pronOpen === ex.id ? null : ex.id)} />
+                  <ExampleBlock key={ex.id} ex={ex} expr={expr.text} expressionId={expr.id} onUpdated={reloadExpr} open={pronOpen === ex.id} onToggle={() => setPronOpen(pronOpen === ex.id ? null : ex.id)} />
                 ))}
               </>
             )}
