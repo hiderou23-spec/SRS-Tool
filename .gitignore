@@ -5,3 +5,6 @@ dev-dist
 test-results
 tests/local-*
 *.tsbuildinfo
+
+# Output of scripts/compare-pron.mjs
+compare-pron-out/

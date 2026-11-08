@@ -1,0 +1,146 @@
+[
+ {
+  "id": 3,
+  "expression": "on the line",
+  "meaning": "〔生命・地位・名声などが〕懸けられて、危険にさらされて、危険にひんして、風前の灯で",
+  "sentence": "Our credibility with the regulator is on the line."
+ },
+ {
+  "id": 9,
+  "expression": "That's a good way to put it",
+  "meaning": "very well expressed and clear",
+  "sentence": "\"So the real issue is ownership, not tooling.\" \"That's a good way to put it.\""
+ },
+ {
+  "id": 18,
+  "expression": "net out",
+  "meaning": "差し引きして結果として〜になる、最終的に〜に落ち着く",
+  "sentence": "Once you net out the chargebacks, our margin is much thinner than it looks."
+ },
+ {
+  "id": 21,
+  "expression": "KYC",
+  "meaning": "Know your customer",
+  "sentence": "Stricter KYC requirements will slow down merchant onboarding."
+ },
+ {
+  "id": 33,
+  "expression": "late notice",
+  "meaning": "単語帳に追加する 拡張検索 遅い通知［通告・知らせ］ ・I apologize [am really sorry] for this late notice. : お知らせが遅くなり申し訳ございません。 ・I am unable to fi",
+  "sentence": "Sorry for the late notice, but the review has moved to 3 p.m."
+ },
+ {
+  "id": 46,
+  "expression": "Head off",
+  "meaning": "（問題などを）未然に防ぐ、阻止する／向かう",
+  "sentence": "I'm heading off now — see you tomorrow."
+ },
+ {
+  "id": 54,
+  "expression": "Take a crack at it",
+  "meaning": "こっちのがカジュアルですが、どちらもほぼ同じ意味ですね。でも紛らわしいのが、前置詞が変わると意味が全く変わること。",
+  "sentence": "Nobody has solved this yet — do you want to take a crack at it?"
+ },
+ {
+  "id": 57,
+  "expression": "push the envelope",
+  "meaning": "もっと高いレベルを求める、既成概念の枠を超える、限界に挑む、許容範囲を超える◆【参考】envelope",
+  "sentence": "We want to push the envelope on what instant payments can do."
+ },
+ {
+  "id": 66,
+  "expression": "Get across",
+  "meaning": "（考えなどを）理解させる、うまく伝える",
+  "sentence": "We need a simpler slide to get the message across to executives."
+ },
+ {
+  "id": 75,
+  "expression": "err on the side of caution",
+  "meaning": "慎重過ぎるぐらい慎重になる、注意し過ぎるぐらい注意する、用心し過ぎるくらい用心する、安全側に倒す",
+  "sentence": "Let's err on the side of caution and delay the release."
+ },
+ {
+  "id": 84,
+  "expression": "Lion's share",
+  "meaning": "最大の分け前",
+  "sentence": "Two players take the lion's share of the QR payment market."
+ },
+ {
+  "id": 95,
+  "expression": "sic someone on someone",
+  "meaning": "(人を)〜に差し向ける、けしかける。相手を追いかけさせたり責めさせたりする時に使う",
+  "sentence": "The draft said effective Jnauary 1 [sic], so legal flagged the typo."
+ },
+ {
+  "id": 105,
+  "expression": "wheelhouse",
+  "meaning": "《one's ～》〈米話〉得意分野、専門領域 発音wíːlhàus",
+  "sentence": "Payments regulation is right in her wheelhouse."
+ },
+ {
+  "id": 129,
+  "expression": "vis-a-vis",
+  "meaning": "〜に関して、向かい合って versus",
+  "sentence": "What's our position vis-a-vis the new competitor?"
+ },
+ {
+  "id": 141,
+  "expression": "make up",
+  "meaning": "構成する、成り立っている",
+  "sentence": "Small merchants make up 70% of our customer base."
+ },
+ {
+  "id": 165,
+  "expression": "Cut someone some slack",
+  "meaning": "（人に）大目に見てやる、少し寛大にする",
+  "sentence": "She's only been here a week — cut her some slack."
+ },
+ {
+  "id": 168,
+  "expression": "Float",
+  "meaning": "提案する",
+  "sentence": "I'd like to float an idea: what if we waived fees for the first month?"
+ },
+ {
+  "id": 200,
+  "expression": "Let me take a pass at it.",
+  "meaning": "話の流れから、「とりあえず自分がやってみるよ。」ということだと分かったのですが、よく聞くのは次のフレーズなので、念のため意味を確認してしまいました。",
+  "sentence": "Let me take a pass at the FAQ, and you can edit it after."
+ },
+ {
+  "id": 229,
+  "expression": "above one's pay grade",
+  "meaning": "あなたの権限を超えているよ",
+  "sentence": "Fixing the car engine? That's way above my pay grade."
+ },
+ {
+  "id": 255,
+  "expression": "down bad",
+  "meaning": "(特に恋愛で)相手にすっかり夢中になっている、ベタ惚れしている",
+  "sentence": "You down bad for the new girl?"
+ },
+ {
+  "id": 312,
+  "expression": "Hammer out",
+  "meaning": "（協議して合意・詳細を）詰める、まとめる",
+  "sentence": "We need to hammer out the details before Friday."
+ },
+ {
+  "id": 324,
+  "expression": "raise someone's hackles",
+  "meaning": "人の怒りや反感を買う、神経を逆なでする",
+  "sentence": "Elevating Miller, an architect of Trump’s controversial mass-deportation efforts, is bound to raise the hackles of the incoming class of congressional Democrats, who have already vowed to investigate the government’s immigration policies."
+ },
+ {
+  "id": 357,
+  "expression": "inadvertently",
+  "meaning": "うっかり、不注意で、意図せずに",
+  "sentence": "I inadvertently sent the draft to the client — sorry about that."
+ },
+ {
+  "id": 419,
+  "expression": "stand at",
+  "meaning": "〔数字が〕～である、～に達する、～を示す",
+  "sentence": "Total debt stands at 2 billion yen."
+ }
+]
