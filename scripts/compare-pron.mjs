@@ -6,7 +6,7 @@
  * prompt (read from src/lib/aiGenerate.ts so it never drifts), the same
  * structured-output schema, effort "medium", and the same user message.
  *
- * Usage (needs ANTHROPIC_API_KEY in the environment; costs roughly $1–2 for 24
+ * Usage (needs ANTHROPIC_API_KEY or PRON_API_KEY in the environment; costs roughly $1–2 for 24
  * sentences × 3 models):
  *   node scripts/compare-pron.mjs [--models opus,sonnet,haiku] [--limit N] [--out DIR]
  *   node scripts/compare-pron.mjs --dry      # print the request for the first sentence, no API call
@@ -84,12 +84,15 @@ if (DRY) {
   console.log(JSON.stringify({ ...p, output_config: { effort: 'medium', format: '(PronOnlySchema)' } }, null, 2));
   process.exit(0);
 }
-if (!process.env.ANTHROPIC_API_KEY) {
-  console.error('ANTHROPIC_API_KEY is not set. Add it to the environment and run again.');
+// Cloud sessions hide ANTHROPIC_API_KEY from commands, so the key can also be
+// stored under PRON_API_KEY.
+const apiKey = process.env.ANTHROPIC_API_KEY || process.env.PRON_API_KEY;
+if (!apiKey) {
+  console.error('Neither ANTHROPIC_API_KEY nor PRON_API_KEY is set. Add one to the environment and run again.');
   process.exit(2);
 }
 
-const client = new Anthropic({ maxRetries: 3 });
+const client = new Anthropic({ apiKey, maxRetries: 3 });
 const results = [];
 // Two requests at a time per model: quick enough, gentle on rate limits.
 async function runModel(modelKey) {
