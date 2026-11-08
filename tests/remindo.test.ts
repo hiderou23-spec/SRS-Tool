@@ -119,3 +119,46 @@ describe('duplicate bulk merge', () => {
     expect(hammer.find((e) => e.suspended)!.tags).toContain('merged');
   });
 });
+
+describe('AI data file that fills in examples', () => {
+  it('fills up to 3 examples, adds missing guides, keeps everything already there', async () => {
+    const { db: d } = await import('../src/db/db');
+    const id = 'fill-1';
+    const ts = '2026-01-01T00:00:00Z';
+    await d.expressions.put({
+      id, text: 'circulate', normalized: 'circulate', meaning: '', notes: '', kind: 'word', tags: [], suspended: false, usedInRealLife: [], createdAt: ts, updatedAt: ts,
+      ai: { category: 'business', importance: 70, meaning: '回覧する', model: 'old', generatedAt: ts },
+      examples: [{ id: 'mine', kind: 'business', en: 'We circulated the deck.', ja: '資料を回覧した。', origin: 'user', status: 'verified' }],
+    });
+    const file = { format: 'english-mastery-ai-assessment', version: 1, model: 'claude', items: [{
+      key: 'circulate', text: 'circulate',
+      examples: [
+        { kind: 'business', en: 'We circulated the deck.', ja: 'x', pronunciation: { level1: { text: 'We circulated the deck.', ipa: '/wi/' } } },
+        { kind: 'daily', en: 'Rumors circulate fast.', ja: '噂はすぐ広まる。', pronunciation: { level1: { text: 'Rumors circulate fast.' } } },
+        { kind: 'alternative', en: 'Blood circulates.', ja: '血液が循環する。' },
+        { kind: 'daily', en: 'One too many.', ja: '余分' },
+      ],
+    }] };
+    const v = validateAiFile(file);
+    expect(v.ok).toBe(true);
+    const r = await applyAiAssessment((v as { ok: true; file: never }).file);
+    expect(r).toMatchObject({ matchedExpressions: 1, examplesAdded: 1, pronunciationsAdded: 2 });
+    const e = (await d.expressions.get(id))!;
+    expect(e.examples.map((x) => [x.id === 'mine' ? 'mine' : x.origin, x.en])).toEqual([
+      ['mine', 'We circulated the deck.'], ['ai', 'Rumors circulate fast.'], ['ai', 'Blood circulates.'],
+    ]);
+    expect(e.examples[0]).toMatchObject({ ja: '資料を回覧した。', status: 'verified' }); // own sentence untouched
+    expect(e.examples[0].pronunciation).toMatchObject({ origin: 'ai', status: 'needs_review' });
+    expect(e.examples[1].pronunciation).toBeTruthy();
+    expect(e.ai).toMatchObject({ category: 'business', importance: 70, meaning: '回覧する', model: 'claude' }); // kept, not erased
+    // Applying the same file again changes nothing.
+    const again = await applyAiAssessment((v as { ok: true; file: never }).file);
+    expect(again).toMatchObject({ examplesAdded: 0, pronunciationsAdded: 0 });
+    expect((await d.expressions.get(id))!.examples).toHaveLength(3);
+  });
+
+  it('still rejects a wrong category or importance', () => {
+    expect(validateAiFile({ format: 'english-mastery-ai-assessment', version: 1, items: [{ text: 'x', category: 'nope' }] }).ok).toBe(false);
+    expect(validateAiFile({ format: 'english-mastery-ai-assessment', version: 1, items: [{ text: 'x', importance: 'high' }] }).ok).toBe(false);
+  });
+});
