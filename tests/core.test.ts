@@ -278,6 +278,8 @@ describe('Speaking focus (Japanese highlight)', () => {
   it('guesses strictly from the meaning, and gives up rather than guess wrong', () => {
     expect(guessJaFocus('木曜のレビューまでに提案を具体化してもらえますか？', ['（計画・アイデアなどに）肉付けする、具体化する'])).toBe('具体化して');
     expect(guessJaFocus('彼女は社交的なので大活躍する。', ['社交好きな、社交的な'])).toBe('社交的な');
+    // A whole short sense found as is.
+    expect(guessJaFocus('正直、勤続10年の贈り物が襟章というのは、ちょっとお粗末だよね。', ['襟章（スーツの襟に付ける小さなピンバッジ）'])).toBe('襟章');
     // Only a 2-char or kana-only overlap: no highlight.
     expect(guessJaFocus('リモコンを独り占めしないで！', ['独占する'])).toBeUndefined();
     expect(guessJaFocus('その理論は誤った前提に基づいている。', ['基礎を置く'])).toBeUndefined();

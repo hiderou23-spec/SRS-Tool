@@ -380,3 +380,80 @@ export async function completeExamples(expressionId: string): Promise<GenerateUs
   });
   return usage;
 }
+
+// ---------------------------------------------------------------------------
+// Speaking highlight for examples that have none (added in the app, or from a
+// file without it). Many sentences per request: only the expression, the
+// English sentence and its Japanese translation are sent.
+
+const FocusSchema = z.object({
+  items: z.array(
+    z.object({
+      n: z.number().int().describe('The number of the sentence as given'),
+      ja_focus: z.string().describe('Exact part of ja that carries the expression, copied character for character; empty string if none fits'),
+    }),
+  ),
+});
+
+export interface FocusTarget {
+  expressionId: string;
+  exampleId: string;
+}
+
+/** Examples with a Japanese translation but no highlight, active expressions, most important first. */
+export async function focusCandidates(): Promise<FocusTarget[]> {
+  const all = await db.expressions.toArray();
+  return all
+    .filter((e) => !e.suspended)
+    .sort((a, b) => effectiveImportance(b) - effectiveImportance(a))
+    .flatMap((e) => e.examples.filter((x) => x.ja.trim() && !x.jaFocus).map((x) => ({ expressionId: e.id, exampleId: x.id })));
+}
+
+/** Write the highlight for a batch of examples. Returns how many got one. */
+export async function generateFocusBatch(targets: FocusTarget[]): Promise<{ added: number; usage: GenerateUsage }> {
+  const found = await db.expressions.bulkGet([...new Set(targets.map((t) => t.expressionId))]);
+  const exprs = new Map(found.filter((e): e is Expression => !!e).map((e) => [e.id, e]));
+  const rows = targets
+    .map((t) => {
+      const e = exprs.get(t.expressionId);
+      const x = e?.examples.find((y) => y.id === t.exampleId);
+      return e && x ? { t, text: e.text, en: x.en, ja: x.ja } : null;
+    })
+    .filter((r): r is NonNullable<typeof r> => !!r);
+  if (!rows.length) return { added: 0, usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 } };
+  const list = rows.map((r, i) => `${i + 1}. Expression: ${r.text}\n   en: ${r.en}\n   ja: ${r.ja}`).join('\n');
+  const { data, usage } = await call(
+    FocusSchema,
+    `For each sentence, give ja_focus: the part of the Japanese translation (ja) that corresponds to the English expression, copied exactly from ja. Keep it short; no particles at the edges; never the whole sentence.\n\n${list}`,
+    { effort: 'low' },
+  );
+  const focusOf = new Map<number, string>();
+  for (const it of data.items) focusOf.set(it.n - 1, it.ja_focus);
+  // expressionId → exampleId → the translation the AI saw and its answer
+  const byExpr = new Map<string, Map<string, { ja: string; focus: string }>>();
+  rows.forEach((r, i) => {
+    const f = focusOf.get(i);
+    if (!f) return;
+    if (!byExpr.has(r.t.expressionId)) byExpr.set(r.t.expressionId, new Map());
+    byExpr.get(r.t.expressionId)!.set(r.t.exampleId, { ja: r.ja, focus: f });
+  });
+  let added = 0;
+  await db.transaction('rw', db.expressions, async () => {
+    for (const [id, m] of byExpr) {
+      const cur = await db.expressions.get(id);
+      if (!cur) continue;
+      let changed = false;
+      const examples = cur.examples.map((x) => {
+        const g = m.get(x.id);
+        // Only where still missing and the translation is the one the AI saw.
+        const focus = g && !x.jaFocus && x.ja === g.ja ? validFocus(x.ja, g.focus) : undefined;
+        if (!focus) return x;
+        changed = true;
+        added++;
+        return { ...x, jaFocus: focus };
+      });
+      if (changed) await db.expressions.put({ ...cur, examples, updatedAt: nowIso() });
+    }
+  });
+  return { added, usage };
+}

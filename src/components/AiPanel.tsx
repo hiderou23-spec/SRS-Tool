@@ -21,7 +21,9 @@ export function recordUsage(u: GenerateUsage) {
   addSpend(u.costUsd);
 }
 
-type Job = 'examples' | 'pronunciation';
+type Job = 'examples' | 'pronunciation' | 'focus';
+/** Sentences per request when adding Speaking highlights. */
+const FOCUS_BATCH = 40;
 
 export default function AiPanel() {
   const [key, setKey] = useState(getApiKey() ?? '');
@@ -45,6 +47,7 @@ export default function AiPanel() {
       return;
     }
     const { bulkCandidates, bulkPronunciationCandidates, generateExamples, generatePronunciation } = await import('../lib/aiGenerate');
+    if (job === 'focus') return runFocus();
     const targets =
       job === 'examples'
         ? (await bulkCandidates(count)).map((expressionId) => ({ expressionId, exampleId: '' }))
@@ -92,6 +95,53 @@ export default function AiPanel() {
     toast(stopRef.current && done < targets.length ? `停止しました（${done - failed}件 生成）` : `${done - failed}件を生成しました`);
   };
 
+  const runFocus = async () => {
+    const { focusCandidates, generateFocusBatch } = await import('../lib/aiGenerate');
+    const targets = await focusCandidates();
+    if (targets.length === 0) {
+      toast('強調箇所のない例文はありません');
+      return;
+    }
+    const m = AI_MODELS.find((x) => x.id === model)!;
+    const batches: (typeof targets)[] = [];
+    for (let i = 0; i < targets.length; i += FOCUS_BATCH) batches.push(targets.slice(i, i + FOCUS_BATCH));
+    const estimate = ((150 * m.inPerM + 60 * m.outPerM) / 1e6) * targets.length + ((1500 * m.inPerM) / 1e6) * batches.length;
+    if (!confirm(`強調箇所のない例文 ${targets.length}件に、Speakingで強調する部分を追加します。\n\n目安の費用：約 $${Math.max(0.01, estimate).toFixed(2)}（${m.label}）\n送信する内容：英語表現・例文・その日本語訳のみ\n\n途中で止めることもできます。続けますか？`)) return;
+    stopRef.current = false;
+    setRunning('focus');
+    setProgress({ done: 0, total: targets.length, failed: 0, cost: 0, last: '' });
+    let done = 0;
+    let added = 0;
+    let failed = 0;
+    let cost = 0;
+    let consecutiveErrors = 0;
+    const queue = [...batches];
+    const worker = async () => {
+      while (queue.length && !stopRef.current) {
+        const b = queue.shift()!;
+        try {
+          const r = await generateFocusBatch(b);
+          added += r.added;
+          cost += r.usage.costUsd;
+          recordUsage(r.usage);
+          consecutiveErrors = 0;
+        } catch (err) {
+          failed += b.length;
+          consecutiveErrors++;
+          setProgress((p) => ({ ...p, last: friendlyError(err) }));
+          const status = (err as { status?: number }).status;
+          if (status === 401 || consecutiveErrors >= 3) stopRef.current = true;
+        }
+        done += b.length;
+        setProgress((p) => ({ ...p, done, failed, cost }));
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+    setRunning(null);
+    setSpend(readSpend());
+    toast(`${added}件の例文に強調箇所を追加しました${stopRef.current && done < targets.length ? '（途中で停止）' : ''}`);
+  };
+
   return (
     <div className="card stack">
       <p className="small" style={{ margin: 0 }}>
@@ -126,6 +176,9 @@ export default function AiPanel() {
       </button>
       <button className="btn block" disabled={!!running || !hasKey} onClick={() => run('pronunciation')}>
         {running === 'pronunciation' ? '発音ガイドを生成中…' : '例文に発音ガイドだけを追加'}
+      </button>
+      <button className="btn block" disabled={!!running || !hasKey} onClick={() => run('focus')}>
+        {running === 'focus' ? '強調箇所を追加中…' : '強調箇所のない例文にSpeakingの強調を追加（全件）'}
       </button>
       {running && (
         <div className="stack">
