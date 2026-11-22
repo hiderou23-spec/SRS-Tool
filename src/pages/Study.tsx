@@ -5,7 +5,7 @@ import { answerCard, excludeExpression, extendSession, finishSession, restoreExp
 import { previewIntervals } from '../srs/scheduler';
 import { useSettings } from '../lib/hooks';
 import { hashParams, navigate } from '../lib/router';
-import { formatInterval } from '../lib/util';
+import { firstSense, formatInterval } from '../lib/util';
 import { IconChevron, IconClose, IconUndo } from '../components/Icons';
 import { PronunciationView } from '../components/Pronunciation';
 import { pickExample } from '../srs/rotation';
@@ -430,7 +430,7 @@ export default function Study() {
               {sentenceMode ? highlightJa(prompt, mainEx!.jaFocus || guessJaFocus(prompt, [expr.meaning, expr.ai?.meaning])) : prompt}
             </div>
             {sentenceMode
-              ? meaningHint && <p className="small muted" style={{ margin: 0, whiteSpace: 'pre-line' }}>使う表現：{meaningHint.split('\n')[0]}</p>
+              ? meaningHint && <p className="small muted" style={{ margin: 0, whiteSpace: 'pre-line' }}>使う表現：{firstSense(meaningHint)}</p>
               : expr.productionPrompt && expr.meaning && <p className="small muted" style={{ margin: 0 }}>{expr.meaning}</p>}
           </>
         ) : (
