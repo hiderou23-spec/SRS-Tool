@@ -283,3 +283,17 @@ describe('Speaking focus (Japanese highlight)', () => {
     expect(guessJaFocus('その理論は誤った前提に基づいている。', ['基礎を置く'])).toBeUndefined();
   });
 });
+
+describe('Speaking hint: first sense', () => {
+  it('keeps only the first sense of a long dictionary meaning', async () => {
+    const { firstSense } = await import('../src/lib/util');
+    expect(firstSense("〔生命・地位・名声などが〕懸けられて、危険にさらされて、危険にひんして、風前の灯で ・My job is on the line if I don't finish this work. : 私の首は、この作業が終わるかどうかにかかっている。 電話に出て 境界線上に"))
+      .toBe('〔生命・地位・名声などが〕懸けられて、危険にさらされて、危険にひんして、風前の灯で');
+    expect(firstSense('〔仕事・責任などを〕引き受ける 〔ある性質・色・形態などを〕呈する、帯びる ・Student services take on new meaning.'))
+      .toBe('〔仕事・責任などを〕引き受ける');
+    expect(firstSense('それは、もういいです。')).toBe('それは、もういいです。');
+    expect(firstSense('（協議して合意・詳細を）詰める、まとめる\n2行目')).toBe('（協議して合意・詳細を）詰める、まとめる');
+    expect(firstSense('あ'.repeat(70))).toBe('あ'.repeat(60) + '…');
+    expect(firstSense(undefined)).toBe('');
+  });
+});

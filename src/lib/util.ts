@@ -61,3 +61,17 @@ export function validFocus(ja: string, focus: string | undefined | null): string
   const f = (focus ?? '').trim();
   return f && ja.includes(f) && f.length < ja.length ? f : undefined;
 }
+
+/**
+ * The first sense of a meaning, for the Speaking hint. Imported dictionary
+ * text can hold several senses, usage examples ("・My job is ...: ...") and
+ * notes on one line; only the part before those is shown.
+ */
+export function firstSense(meaning: string | undefined | null, max = 60): string {
+  let m = (meaning ?? '').trim().split('\n')[0];
+  m = m.split(/\s*◆/)[0];
+  m = m.split(/\s+・/)[0];
+  m = m.split(/\s+(?=[〔【〈])/)[0];
+  m = m.replace(/\s{2,}/g, ' ').trim();
+  return m.length > max ? m.slice(0, max) + '…' : m;
+}
