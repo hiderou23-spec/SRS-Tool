@@ -11,7 +11,7 @@ import { useSettings, toast } from '../lib/hooks';
 import { hashParams, navigate } from '../lib/router';
 import { IconBack } from '../components/Icons';
 import { PronunciationView, QualityChip } from '../components/Pronunciation';
-import { highlight } from '../components/Highlight';
+import { highlight, highlightJa } from '../components/Highlight';
 import { IconChevron } from '../components/Icons';
 import { friendlyError, getApiKey, type GenerateUsage } from '../lib/aiConfig';
 import { recordUsage } from '../components/AiPanel';
@@ -243,7 +243,7 @@ export default function ExpressionDetail({ id }: { id: string }) {
             </div>
             <div className="example" style={{ marginTop: 0 }}>
               <div className="en">{highlight(ex.en, stored.text)}</div>
-              {ex.ja && <div className="ja">{ex.ja}</div>}
+              {ex.ja && <div className="ja">{highlightJa(ex.ja, ex.jaFocus)}</div>}
             </div>
             <button className="disclosure" aria-expanded={pronOpen === ex.id} onClick={() => setPronOpen(pronOpen === ex.id ? null : ex.id)}>
               <span>発音ガイド{ex.pronunciation ? '' : '（未登録）'}</span>
@@ -374,6 +374,8 @@ export default function ExpressionDetail({ id }: { id: string }) {
           </div>
           <textarea className="textarea" style={{ fontFamily: 'var(--serif)', fontSize: 17, minHeight: 64 }} placeholder="English example" value={ex.en} onChange={(e) => setEx(i, { en: e.target.value, origin: ex.origin === 'ai' ? 'user' : ex.origin })} autoCapitalize="sentences" />
           <textarea className="textarea" style={{ minHeight: 56 }} placeholder="日本語訳" value={ex.ja} onChange={(e) => setEx(i, { ja: e.target.value, origin: ex.origin === 'ai' ? 'user' : ex.origin })} />
+          <input className="input" placeholder="Speakingで強調する部分（日本語訳の一部をそのまま）" value={ex.jaFocus ?? ''} onChange={(e) => setEx(i, { jaFocus: e.target.value || undefined })} />
+          {ex.jaFocus && !ex.ja.includes(ex.jaFocus) && <p className="tiny" style={{ margin: 0, color: 'var(--again)' }}>日本語訳の中にこの文字列がないため、強調されません。</p>}
           <div className="row between small muted">
             <span>出典: {ex.origin === 'ai' ? 'AI生成' : ex.origin === 'user' ? '自分で入力/編集' : ex.origin === 'imported' ? 'インポート' : 'サンプル'}</span>
             <div className="row" style={{ gap: 4 }}>

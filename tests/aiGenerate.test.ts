@@ -66,8 +66,8 @@ describe('in-app AI generation', () => {
     nextOutput = {
       category: 'phrasal_verb', importance: 95, meaning_ja: '詳細を詰める',
       examples: [
-        { kind: 'business', en: 'We need to hammer out the details.', ja: '詳細を詰める必要がある。' },
-        { kind: 'daily', en: 'We hammered out our plans.', ja: '計画を決めた。' },
+        { kind: 'business', en: 'We need to hammer out the details.', ja: '詳細を詰める必要がある。', ja_focus: '詳細を詰める' },
+        { kind: 'daily', en: 'We hammered out our plans.', ja: '計画を決めた。', ja_focus: '存在しない' },
         { kind: 'alternative', en: 'They hammered out a deal.', ja: '合意をまとめた。' },
       ],
       pronunciation: pron,
@@ -85,6 +85,9 @@ describe('in-app AI generation', () => {
     expect(e.examples[0].pronunciation).toMatchObject({ origin: 'ai', status: 'needs_review', level2: { text: 'We nee-tuh' } });
     expect(e.examples[0].pronunciation!.notes).toContain('【要確認】');
     expect(e.examples[1].pronunciation).toBeUndefined();
+    // The Japanese focus is kept only when it is really part of the translation.
+    expect(e.examples[0].jaFocus).toBe('詳細を詰める');
+    expect(e.examples[1].jaFocus).toBeUndefined();
   });
 
   it('never overwrites the learner’s own examples or meaning', async () => {
@@ -116,7 +119,7 @@ describe('in-app AI generation', () => {
 });
 
 describe('faster suggestions and filling in later', () => {
-  const item = (text: string) => ({ text, meaning_ja: 'm', why_ja: 'w', category: 'business', importance: 80, examples: [{ kind: 'business', en: `We ${text}.`, ja: '例' }] });
+  const item = (text: string) => ({ text, meaning_ja: 'm', why_ja: 'w', category: 'business', importance: 80, examples: [{ kind: 'business', en: `We ${text}.`, ja: '例', ja_focus: '' }] });
 
   it('streams the suggestion request at low effort and reports progress', async () => {
     const { suggestExpressions } = await import('../src/lib/aiGenerate');

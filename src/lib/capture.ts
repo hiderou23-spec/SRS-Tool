@@ -98,7 +98,8 @@ export interface CaptureAi {
   category: Category;
   importance: number;
   sentenceJa: string;
-  examples: { kind: ExampleKind; en: string; ja: string }[];
+  sentenceJaFocus?: string;
+  examples: { kind: ExampleKind; en: string; ja: string; jaFocus?: string }[];
   pronunciation?: PronunciationGuide;
   model?: string;
 }
@@ -125,6 +126,7 @@ export async function addCaptured(input: CaptureInput, now = new Date()): Promis
       kind: 'business',
       en: input.sentence.trim(),
       ja: input.ai?.sentenceJa?.trim() ?? '',
+      ...(input.ai?.sentenceJaFocus ? { jaFocus: input.ai.sentenceJaFocus } : {}),
       // The sentence itself is real; its translation (if any) is AI-made, so it stays unverified.
       origin: 'user',
       status: input.ai ? 'unverified' : 'verified',
@@ -132,7 +134,7 @@ export async function addCaptured(input: CaptureInput, now = new Date()): Promis
   }
   for (const x of input.ai?.examples ?? []) {
     if (examples.length >= 3 || !x.en.trim()) continue;
-    examples.push({ id: uid(), kind: x.kind, en: x.en.trim(), ja: x.ja.trim(), origin: 'ai', status: 'unverified' });
+    examples.push({ id: uid(), kind: x.kind, en: x.en.trim(), ja: x.ja.trim(), ...(x.jaFocus ? { jaFocus: x.jaFocus } : {}), origin: 'ai', status: 'unverified' });
   }
   // The guide was written for one specific sentence: attach it only to that example.
   const pron = input.ai?.pronunciation;
@@ -251,12 +253,12 @@ export async function applyCaptureAi(expressionId: string, ai: CaptureAi): Promi
     }
     const examples = e.examples.map((x, i) => {
       if (i !== 0 || x.origin !== 'user') return x;
-      const withJa = x.ja ? x : { ...x, ja: ai.sentenceJa, status: 'unverified' as const };
+      const withJa = x.ja ? x : { ...x, ja: ai.sentenceJa, ...(ai.sentenceJaFocus ? { jaFocus: ai.sentenceJaFocus } : {}), status: 'unverified' as const };
       return ai.pronunciation && !x.pronunciation && ai.pronunciation.level1.text === x.en ? { ...withJa, pronunciation: ai.pronunciation } : withJa;
     });
     for (const x of ai.examples) {
       if (examples.length >= 3 || !x.en.trim()) continue;
-      examples.push({ id: uid(), kind: x.kind, en: x.en.trim(), ja: x.ja.trim(), origin: 'ai', status: 'unverified' });
+      examples.push({ id: uid(), kind: x.kind, en: x.en.trim(), ja: x.ja.trim(), ...(x.jaFocus ? { jaFocus: x.jaFocus } : {}), origin: 'ai', status: 'unverified' });
     }
     await db.expressions.put({
       ...e,

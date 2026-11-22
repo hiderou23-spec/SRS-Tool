@@ -9,6 +9,8 @@ import { answerCard, startOrResumeSession, undoLast, previewToday, excludeExpres
 import { createBackup, restoreBackup, validateBackup, buildCsv } from '../src/lib/backup';
 import { planQueue } from '../src/srs/queue';
 import { pickExample } from '../src/srs/rotation';
+import { guessJaFocus } from '../src/components/Highlight';
+import { validFocus } from '../src/lib/util';
 import { encouragementWith, nextFromBag, MESSAGES, QUICK_MESSAGES, TIPS, type KV } from '../src/lib/encouragement';
 import type { Example } from '../src/db/types';
 
@@ -262,5 +264,22 @@ describe('encouragement', () => {
     }
     expect(quickSeen).toBeGreaterThan(0);
     expect(quickSeen).toBeLessThan(40);
+  });
+});
+
+describe('Speaking focus (Japanese highlight)', () => {
+  it('keeps a stored focus only if it is part of the sentence', () => {
+    expect(validFocus('木曜までに提案を具体化してもらえますか？', '具体化して')).toBe('具体化して');
+    expect(validFocus('木曜までに提案を具体化してもらえますか？', '肉付けする')).toBeUndefined();
+    expect(validFocus('同じく', '同じく')).toBeUndefined(); // whole sentence: nothing to point at
+    expect(validFocus('abc', '')).toBeUndefined();
+  });
+
+  it('guesses strictly from the meaning, and gives up rather than guess wrong', () => {
+    expect(guessJaFocus('木曜のレビューまでに提案を具体化してもらえますか？', ['（計画・アイデアなどに）肉付けする、具体化する'])).toBe('具体化して');
+    expect(guessJaFocus('彼女は社交的なので大活躍する。', ['社交好きな、社交的な'])).toBe('社交的な');
+    // Only a 2-char or kana-only overlap: no highlight.
+    expect(guessJaFocus('リモコンを独り占めしないで！', ['独占する'])).toBeUndefined();
+    expect(guessJaFocus('その理論は誤った前提に基づいている。', ['基礎を置く'])).toBeUndefined();
   });
 });

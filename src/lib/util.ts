@@ -55,3 +55,9 @@ export function formatInterval(days: number): string {
 export function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
 }
+
+/** A Japanese focus span is kept only when it really is part of the sentence. */
+export function validFocus(ja: string, focus: string | undefined | null): string | undefined {
+  const f = (focus ?? '').trim();
+  return f && ja.includes(f) && f.length < ja.length ? f : undefined;
+}

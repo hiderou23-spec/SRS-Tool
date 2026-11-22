@@ -79,6 +79,8 @@ export interface Example {
   origin: Origin;
   status: QualityStatus;
   pronunciation?: PronunciationGuide;
+  /** The part of `ja` that corresponds to the expression; highlighted in Speaking prompts. */
+  jaFocus?: string;
 }
 
 /** AI classification is kept apart from the user's own values. */
@@ -270,7 +272,7 @@ export interface Suggestion {
   reason: string;
   category: Category;
   importance: number;
-  examples: { kind: ExampleKind; en: string; ja: string }[];
+  examples: { kind: ExampleKind; en: string; ja: string; jaFocus?: string }[];
   status: SuggestionStatus;
   /** 1-based request number within the day (older rows: undefined = 1). */
   batch?: number;

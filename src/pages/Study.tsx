@@ -9,7 +9,7 @@ import { formatInterval } from '../lib/util';
 import { IconChevron, IconClose, IconUndo } from '../components/Icons';
 import { PronunciationView } from '../components/Pronunciation';
 import { pickExample } from '../srs/rotation';
-import { highlight } from '../components/Highlight';
+import { guessJaFocus, highlight, highlightJa } from '../components/Highlight';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { encouragementFor } from '../lib/encouragement';
 import { hintSteps, type HintStep } from '../srs/hint';
@@ -426,7 +426,9 @@ export default function Study() {
 
         {isProd ? (
           <>
-            <div className={sentenceMode ? 'expr prompt sentence' : 'expr prompt'}>{prompt}</div>
+            <div className={sentenceMode ? 'expr prompt sentence' : 'expr prompt'}>
+              {sentenceMode ? highlightJa(prompt, mainEx!.jaFocus || guessJaFocus(prompt, [expr.meaning, expr.ai?.meaning])) : prompt}
+            </div>
             {sentenceMode
               ? meaningHint && <p className="small muted" style={{ margin: 0, whiteSpace: 'pre-line' }}>使う表現：{meaningHint.split('\n')[0]}</p>
               : expr.productionPrompt && expr.meaning && <p className="small muted" style={{ margin: 0 }}>{expr.meaning}</p>}
