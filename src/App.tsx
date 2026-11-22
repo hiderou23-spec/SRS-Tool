@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
+import { onRegistered } from './lib/pwaUpdate';
 import { useHashRoute } from './lib/router';
 import { useSettings, useToast } from './lib/hooks';
 import { requestPersistentStorage } from './db/db';
@@ -28,7 +29,7 @@ export default function App() {
   const route = useHashRoute();
   const settings = useSettings();
   const toastMsg = useToast();
-  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW();
+  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW({ onRegisteredSW: (_url, r) => onRegistered(r) });
 
   useEffect(() => {
     const el = document.documentElement;

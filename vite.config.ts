@@ -7,7 +7,7 @@ import pkg from './package.json';
 // base: './' so the build works at any sub-path (e.g. GitHub Pages /srs-tool/).
 export default defineConfig({
   base: './',
-  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+  define: { __APP_VERSION__: JSON.stringify(pkg.version), __BUILD_TIME__: JSON.stringify(new Date().toISOString()) },
   plugins: [
     react(),
     VitePWA({
