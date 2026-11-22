@@ -9,6 +9,7 @@ import { applyAiAssessment, validateAiFile } from '../lib/aiAssessment';
 import AiPanel from '../components/AiPanel';
 import { BATCHES_PER_DAY_OPTIONS, batchesPerDay } from '../lib/suggestions';
 import { IconRight } from '../components/Icons';
+import { checkForUpdate } from '../lib/pwaUpdate';
 
 function Toggle({ label, desc, checked, onChange }: { label: string; desc?: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -32,6 +33,11 @@ function Link({ href, label, badge }: { href: string; label: string; badge?: str
   );
 }
 
+const buildLabel = (() => {
+  const d = new Date(__BUILD_TIME__);
+  return Number.isNaN(d.getTime()) ? '' : `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+})();
+
 export default function SettingsPage() {
   const s = useSettings();
   const set = (patch: Partial<Settings>) => saveSettings(patch);
@@ -40,6 +46,18 @@ export default function SettingsPage() {
   const [persisted, setPersisted] = useState<boolean | null>(null);
   const [usage, setUsage] = useState<string>('');
   const [restoreCandidate, setRestoreCandidate] = useState<BackupFile | null>(null);
+  const [checking, setChecking] = useState(false);
+  const checkUpdate = async () => {
+    setChecking(true);
+    const r = await checkForUpdate();
+    setChecking(false);
+    toast(
+      r === 'found' ? '新しいバージョンがあります。画面上部の「更新」を押してください'
+        : r === 'latest' ? '最新のバージョンです'
+        : r === 'offline' ? '確認できませんでした。通信状態を確認してください'
+        : 'この環境では更新を確認できません',
+    );
+  };
 
   useEffect(() => {
     navigator.storage?.persisted?.().then(setPersisted).catch(() => setPersisted(null));
@@ -215,7 +233,12 @@ export default function SettingsPage() {
       <div className="list" style={{ marginTop: 20 }}>
         <button className="list-item" onClick={wipe}><span className="grow" style={{ color: 'var(--again)' }}>すべてのデータを削除</span></button>
       </div>
-      <p className="tiny muted center">English Mastery v{__APP_VERSION__} · データは外部に送信されません</p>
+      <div className="list" style={{ marginTop: 12 }}>
+        <button className="list-item" onClick={checkUpdate} disabled={checking}>
+          <span className="grow">{checking ? '確認中…' : 'アプリの更新を確認'}</span>
+        </button>
+      </div>
+      <p className="tiny muted center">English Mastery v{__APP_VERSION__}（{buildLabel}版） · データは外部に送信されません</p>
 
       {restoreCandidate && (
         <div className="sheet-backdrop" onClick={() => setRestoreCandidate(null)}>
