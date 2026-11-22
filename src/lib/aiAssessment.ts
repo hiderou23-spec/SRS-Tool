@@ -7,7 +7,7 @@ import { db } from '../db/db';
 import type { Category, Example, ExampleKind, PronunciationGuide } from '../db/types';
 import { CATEGORY_LABELS } from '../db/types';
 import { normalizeKey } from '../import/clean';
-import { nowIso, uid } from './util';
+import { nowIso, uid, validFocus } from './util';
 
 export const AI_FORMAT = 'english-mastery-ai-assessment';
 
@@ -20,7 +20,7 @@ export interface AiAssessmentFile {
    * category / importance may be left out by a file that only fills in
    * examples and pronunciation guides; existing AI values are then kept.
    */
-  items: { key?: string; text: string; category?: Category; importance?: number; rationale?: string; meaning?: string; examples?: { kind: ExampleKind; en: string; ja: string; pronunciation?: Omit<PronunciationGuide, 'origin' | 'status'> }[] }[];
+  items: { key?: string; text: string; category?: Category; importance?: number; rationale?: string; meaning?: string; examples?: { kind: ExampleKind; en: string; ja: string; jaFocus?: string; pronunciation?: Omit<PronunciationGuide, 'origin' | 'status'> }[] }[];
 }
 
 export function validateAiFile(obj: unknown): { ok: true; file: AiAssessmentFile } | { ok: false; error: string } {
@@ -40,6 +40,8 @@ export interface ApplyResult {
   userOverridesKept: number;
   examplesAdded: number;
   pronunciationsAdded: number;
+  /** Examples that got the Japanese span to highlight in Speaking. */
+  focusAdded: number;
 }
 
 export async function applyAiAssessment(file: AiAssessmentFile): Promise<ApplyResult> {
@@ -50,6 +52,7 @@ export async function applyAiAssessment(file: AiAssessmentFile): Promise<ApplyRe
   let overrides = 0;
   let examplesAdded = 0;
   let pronunciationsAdded = 0;
+  let focusAdded = 0;
   const guide = (g: Omit<PronunciationGuide, 'origin' | 'status'>): PronunciationGuide => ({ ...g, origin: 'ai', status: 'needs_review' });
   const usedKeys = new Set<string>();
   await db.transaction('rw', db.expressions, async () => {
@@ -64,10 +67,20 @@ export async function applyAiAssessment(file: AiAssessmentFile): Promise<ApplyRe
       // Existing examples are never changed or removed. A guide is attached to an
       // existing example with the same sentence where it has none yet...
       let examples: Example[] = e.examples.map((ex) => {
+        let out = ex;
         const src = it.examples?.find((x) => x.pronunciation && x.en.trim() === ex.en.trim());
-        if (!src || ex.pronunciation) return ex;
-        pronunciationsAdded++;
-        return { ...ex, pronunciation: guide(src.pronunciation!) };
+        if (src && !ex.pronunciation) {
+          pronunciationsAdded++;
+          out = { ...out, pronunciation: guide(src.pronunciation!) };
+        }
+        // The highlight span only applies to the same Japanese sentence it was written for.
+        const fsrc = it.examples?.find((x) => x.jaFocus && x.en.trim() === ex.en.trim() && x.ja.trim() === ex.ja.trim());
+        const focus = fsrc && !ex.jaFocus ? validFocus(ex.ja, fsrc.jaFocus) : undefined;
+        if (focus) {
+          focusAdded++;
+          out = { ...out, jaFocus: focus };
+        }
+        return out;
       });
       // ...and new sentences fill the expression up to 3 examples.
       if (it.examples?.length && examples.length < 3) {
@@ -77,6 +90,7 @@ export async function applyAiAssessment(file: AiAssessmentFile): Promise<ApplyRe
           .slice(0, 3 - examples.length)
           .map((x) => ({
             id: uid(), kind: x.kind, en: x.en.trim(), ja: x.ja, origin: 'ai' as const, status: 'unverified' as const,
+            ...(validFocus(x.ja, x.jaFocus) ? { jaFocus: validFocus(x.ja, x.jaFocus) } : {}),
             ...(x.pronunciation ? { pronunciation: guide(x.pronunciation) } : {}),
           }));
         if (extra.length) {
@@ -104,5 +118,5 @@ export async function applyAiAssessment(file: AiAssessmentFile): Promise<ApplyRe
     }
     await db.expressions.bulkPut(updates);
   });
-  return { items: file.items.length, matchedExpressions: matched, unmatchedItems: file.items.length - usedKeys.size, userOverridesKept: overrides, examplesAdded, pronunciationsAdded };
+  return { items: file.items.length, matchedExpressions: matched, unmatchedItems: file.items.length - usedKeys.size, userOverridesKept: overrides, examplesAdded, pronunciationsAdded, focusAdded };
 }

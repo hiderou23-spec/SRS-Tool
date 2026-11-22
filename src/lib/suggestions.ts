@@ -15,7 +15,7 @@ import type { Category, Example, Expression, Suggestion, SuggestionStatus } from
 import { classifyKind, cleanEnglish, normalizeKey } from '../import/clean';
 import { makeCards } from '../import/importer';
 import { effectiveImportance } from '../srs/queue';
-import { dayKey, nowIso, uid } from './util';
+import { dayKey, nowIso, uid, validFocus } from './util';
 import type { GenerateUsage, SuggestContext, SuggestedItem } from './aiGenerate';
 
 export const DAILY_SUGGESTIONS = 5;
@@ -222,7 +222,7 @@ export async function requestTodaysSuggestions(
     reason: it.why_ja.trim(),
     category: it.category as Category,
     importance: it.importance,
-    examples: it.examples.map((x) => ({ kind: x.kind, en: x.en.trim(), ja: x.ja.trim() })),
+    examples: it.examples.map((x) => ({ kind: x.kind, en: x.en.trim(), ja: x.ja.trim(), jaFocus: validFocus(x.ja.trim(), x.ja_focus) })),
     status: 'pending',
     batch,
     level: lv.level,
@@ -256,7 +256,7 @@ export async function addSuggestion(id: string, now = new Date()): Promise<{ exp
     }
 
     const ts = now.toISOString();
-    const examples: Example[] = s.examples.map((x) => ({ id: uid(), kind: x.kind, en: x.en, ja: x.ja, origin: 'ai', status: 'unverified' }));
+    const examples: Example[] = s.examples.map((x) => ({ id: uid(), kind: x.kind, en: x.en, ja: x.ja, ...(x.jaFocus ? { jaFocus: x.jaFocus } : {}), origin: 'ai', status: 'unverified' }));
     const expr: Expression = {
       id: uid(),
       text: s.text,

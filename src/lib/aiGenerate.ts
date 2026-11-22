@@ -13,7 +13,7 @@
 import { z } from 'zod';
 import { db } from '../db/db';
 import type { Category, Example, Expression, PronunciationGuide } from '../db/types';
-import { nowIso, uid } from './util';
+import { nowIso, uid, validFocus } from './util';
 import { effectiveImportance } from '../srs/queue';
 import { estimateCostUsd, getAiModel, getApiKey, type GenerateUsage } from './aiConfig';
 export type { GenerateUsage } from './aiConfig';
@@ -32,12 +32,22 @@ const PronSchema = z.object({
   uncertain: z.boolean().describe('true if any part is uncertain'),
 });
 
+/** One example sentence, with the Japanese span that corresponds to the expression. */
+const ExampleItem = z.object({
+  kind: z.enum(['business', 'daily', 'alternative']),
+  en: z.string(),
+  ja: z.string(),
+  ja_focus: z
+    .string()
+    .describe('The exact part of the Japanese translation that corresponds to the target expression, copied character for character from ja (e.g. ja "木曜までに提案を具体化してもらえますか？" → "具体化して"). Short, no particles at the edges.'),
+});
+
 const ExamplesSchema = z.object({
   category: z.enum(CATEGORIES),
   importance: z.number().int().describe('0-100 for this learner'),
   meaning_ja: z.string().describe('Concise Japanese meaning. Empty string if the learner already has one.'),
   examples: z
-    .array(z.object({ kind: z.enum(['business', 'daily', 'alternative']), en: z.string(), ja: z.string() }))
+    .array(ExampleItem)
     .describe('Exactly 3: business, daily, alternative (different sense or usage)'),
   pronunciation: PronSchema.describe('Pronunciation guide for the FIRST example sentence'),
 });
@@ -52,6 +62,7 @@ Example sentences:
 - The business example should fit meetings, payments, merchants, finance, product or leadership work.
 - The alternative example shows a different natural sense or usage. Japanese translations are natural, not literal.
 - The target expression must appear in each sentence (inflection allowed).
+- ja_focus: the part of the Japanese translation that carries the expression's meaning, copied exactly from ja.
 
 Pronunciation (General American):
 - Level 1: careful pronunciation. Level 2: natural conversational connected speech — linking, reduction, elision, flapping, assimilation — spelled with the same words (e.g. "We nee-tuh hamme-rout the details b'fore Friday."). Never change the words.
@@ -151,6 +162,7 @@ export async function generateExamples(expressionId: string): Promise<GenerateUs
     kind: x.kind ?? kinds[i],
     en: x.en.trim(),
     ja: x.ja.trim(),
+    ...(validFocus(x.ja.trim(), x.ja_focus) ? { jaFocus: validFocus(x.ja.trim(), x.ja_focus) } : {}),
     origin: 'ai',
     status: 'unverified',
     ...(i === 0 ? { pronunciation: toGuide(data.pronunciation, x.en.trim()) } : {}),
@@ -218,7 +230,7 @@ const SuggestSchema = z.object({
         category: z.enum(CATEGORIES),
         importance: z.number().int().describe('0-100 for this learner'),
         examples: z
-          .array(z.object({ kind: z.enum(['business', 'daily', 'alternative']), en: z.string(), ja: z.string() }))
+          .array(ExampleItem)
           .describe('Exactly 1 short business example. (More examples are written later, only for the ones the learner adds.)'),
       }),
     )
@@ -294,8 +306,9 @@ const CaptureSchema = z.object({
   category: z.enum(CATEGORIES),
   importance: z.number().int().describe('0-100 for this learner'),
   sentence_ja: z.string().describe('Natural Japanese translation of the found sentence'),
+  sentence_ja_focus: z.string().describe('The exact part of sentence_ja that corresponds to the expression, copied from it'),
   examples: z
-    .array(z.object({ kind: z.enum(['business', 'daily', 'alternative']), en: z.string(), ja: z.string() }))
+    .array(ExampleItem)
     .describe('Exactly 2 NEW examples: one daily, one alternative (different sense or usage). The found sentence already serves as the business example.'),
   pronunciation: PronSchema.describe('Pronunciation guide for the FOUND sentence, exactly as written'),
 });
@@ -321,7 +334,8 @@ export async function analyzeCaptured(selection: string, sentence: string): Prom
       category: data.category as Category,
       importance: data.importance,
       sentenceJa: data.sentence_ja.trim(),
-      examples: data.examples.slice(0, 2).map((x) => ({ kind: x.kind, en: x.en.trim(), ja: x.ja.trim() })),
+      sentenceJaFocus: validFocus(data.sentence_ja.trim(), data.sentence_ja_focus),
+      examples: data.examples.slice(0, 2).map((x) => ({ kind: x.kind, en: x.en.trim(), ja: x.ja.trim(), jaFocus: validFocus(x.ja.trim(), x.ja_focus) })),
       pronunciation: toGuide(data.pronunciation, s),
       model: getAiModel(),
     },
@@ -330,7 +344,7 @@ export async function analyzeCaptured(selection: string, sentence: string): Prom
 
 const MoreSchema = z.object({
   examples: z
-    .array(z.object({ kind: z.enum(['business', 'daily', 'alternative']), en: z.string(), ja: z.string() }))
+    .array(ExampleItem)
     .describe('The requested number of NEW examples, of the requested kinds'),
   pronunciation: PronSchema.describe('Pronunciation guide for the FIRST existing example sentence, exactly as written'),
 });
@@ -360,7 +374,7 @@ export async function completeExamples(expressionId: string): Promise<GenerateUs
     const added: Example[] = data.examples
       .filter((x) => x.en.trim())
       .slice(0, Math.max(0, 3 - cur.examples.length))
-      .map((x) => ({ id: uid(), kind: x.kind, en: x.en.trim(), ja: x.ja.trim(), origin: 'ai' as const, status: 'unverified' as const }));
+      .map((x) => ({ id: uid(), kind: x.kind, en: x.en.trim(), ja: x.ja.trim(), jaFocus: validFocus(x.ja.trim(), x.ja_focus), origin: 'ai' as const, status: 'unverified' as const }));
     const examples = cur.examples.map((x, i) => (i === 0 && !x.pronunciation ? { ...x, pronunciation: toGuide(data.pronunciation, x.en) } : x));
     await db.expressions.put({ ...cur, examples: [...examples, ...added], updatedAt: nowIso() });
   });

@@ -19,9 +19,9 @@ const { createBackup, restoreBackup, validateBackup } = await import('../src/lib
 const item = (text: string, importance = 70): SuggestedItem => ({
   text, meaning_ja: `${text}の意味`, why_ja: '会議で使う', category: 'business', importance,
   examples: [
-    { kind: 'business', en: `Let's ${text} today.`, ja: '今日やろう' },
-    { kind: 'daily', en: `I ${text} a lot.`, ja: 'よくやる' },
-    { kind: 'alternative', en: `They ${text}.`, ja: '彼らは' },
+    { kind: 'business', en: `Let's ${text} today.`, ja: '今日やろう', ja_focus: 'やろう' },
+    { kind: 'daily', en: `I ${text} a lot.`, ja: 'よくやる', ja_focus: '' },
+    { kind: 'alternative', en: `They ${text}.`, ja: '彼らは', ja_focus: '' },
   ],
 });
 const expr = (text: string, extra: Partial<Expression> = {}): Expression => ({

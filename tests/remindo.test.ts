@@ -67,7 +67,7 @@ describe('reminDO format', () => {
     const v = validateAiFile(file);
     expect(v.ok).toBe(true);
     const r = await applyAiAssessment((v as { ok: true; file: never }).file);
-    expect(r).toEqual({ items: 4, matchedExpressions: 4, unmatchedItems: 1, userOverridesKept: 1, examplesAdded: 2, pronunciationsAdded: 0 });
+    expect(r).toEqual({ items: 4, matchedExpressions: 4, unmatchedItems: 1, userOverridesKept: 1, examplesAdded: 2, pronunciationsAdded: 0, focusAdded: 0 });
     const hammers = (await db.expressions.toArray()).filter((x) => x.normalized === 'hammer out');
     expect(hammers[0].examples[0]).toMatchObject({ origin: 'ai', status: 'unverified', kind: 'business' });
     const again = await applyAiAssessment((v as { ok: true; file: never }).file);
@@ -160,5 +160,29 @@ describe('AI data file that fills in examples', () => {
   it('still rejects a wrong category or importance', () => {
     expect(validateAiFile({ format: 'english-mastery-ai-assessment', version: 1, items: [{ text: 'x', category: 'nope' }] }).ok).toBe(false);
     expect(validateAiFile({ format: 'english-mastery-ai-assessment', version: 1, items: [{ text: 'x', importance: 'high' }] }).ok).toBe(false);
+  });
+});
+
+describe('AI file: Speaking focus', () => {
+  it('adds the Japanese focus only to the same sentence and translation, once', async () => {
+    const { analysis, mapping } = await load();
+    await commitImport(analysis, mapping, 'remindo.txt', 'h');
+    const ex = (focus?: string, ja = '詳細を詰める必要がある。') => ({ kind: 'business' as const, en: 'We need to hammer out the details.', ja, ...(focus ? { jaFocus: focus } : {}) });
+    const file = (examples: object[]) => {
+      const v = validateAiFile({ format: 'english-mastery-ai-assessment', version: 7, items: [{ key: 'hammer out', text: 'Hammer out', examples }] });
+      if (!v.ok) throw new Error(v.error);
+      return v.file;
+    };
+    await applyAiAssessment(file([ex()]));
+    // Same sentence and translation → focus attached.
+    let r = await applyAiAssessment(file([ex('詳細を詰める')]));
+    expect(r.focusAdded).toBeGreaterThan(0); // every matching copy (the fixture has duplicates)
+    const get = async () => (await db.expressions.toArray()).find((x) => x.normalized === 'hammer out')!.examples[0];
+    expect((await get()).jaFocus).toBe('詳細を詰める');
+    // Already set: not changed again.
+    r = await applyAiAssessment(file([ex('詰める')]));
+    expect(r.focusAdded).toBe(0);
+    expect((await get()).jaFocus).toBe('詳細を詰める');
+    expect((await get()).ja).toBe('詳細を詰める必要がある。');
   });
 });
