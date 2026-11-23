@@ -19,8 +19,8 @@ const KANA_OR_KANJI_START = /^[\u30a0-\u30ff\u4e00-\u9fff]/;
 /**
  * Fallback when an example has no stored focus: the longest piece of the
  * meaning that also appears in the sentence. Deliberately strict (3+ chars,
- * starts with kanji/katakana, contains kanji) so a wrong highlight is rare;
- * when unsure, nothing is highlighted.
+ * starts with kanji/katakana, contains kanji — or a whole 2+ char sense such
+ * as 襟章) so a wrong highlight is rare; when unsure, nothing is highlighted.
  */
 export function guessJaFocus(ja: string, meanings: (string | undefined)[]): string | undefined {
   let best = '';
@@ -28,10 +28,23 @@ export function guessJaFocus(ja: string, meanings: (string | undefined)[]): stri
     if (!m) continue;
     const chunks = m.replace(/[（(〔【《〈][^）)〕】》〉]*[）)〕】》〉]/g, '、').split(/[、，,／/・;；\n「」『』。！？!?◆~〜…\s]+/);
     for (const c of chunks) {
+      // A whole sense of the meaning found as is (e.g. 襟章) is safe even when short.
+      if (c.length >= 2 && c.length > best.length && KANA_OR_KANJI_START.test(c) && /[゠-ヿ一-鿿]{2}/.test(c) && ja.includes(c)) best = c;
       for (let len = Math.min(c.length, 12); len >= 3 && len > best.length; len--) {
         for (let i = 0; i + len <= c.length; i++) {
           const piece = c.slice(i, i + len);
           if (KANA_OR_KANJI_START.test(piece) && KANJI.test(piece) && ja.includes(piece)) {
+            best = piece;
+            break;
+          }
+        }
+      }
+      // An inflected verb (降りる → 降りた): match its stem, then the okurigana is added below.
+      if (/[うくすつぬむるぐぶ]$/.test(c)) {
+        const stem = c.slice(0, -1);
+        for (let i = 0; stem.length - i >= 2 && stem.length - i > best.length; i++) {
+          const piece = stem.slice(i);
+          if (KANJI.test(piece[0]) && ja.includes(piece)) {
             best = piece;
             break;
           }

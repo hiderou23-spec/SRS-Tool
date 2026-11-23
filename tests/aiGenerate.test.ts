@@ -168,3 +168,30 @@ describe('faster suggestions and filling in later', () => {
     expect(calls).toHaveLength(1);
   });
 });
+
+describe('Speaking highlight for examples without one', () => {
+  it('fills only missing highlights, only with a span of the same translation', async () => {
+    const ex = (id: string, ja: string, jaFocus?: string) => ({ id, kind: 'business' as const, en: 'x', ja, origin: 'ai' as const, status: 'unverified' as const, ...(jaFocus ? { jaFocus } : {}) });
+    const id = await addExpr({
+      examples: [ex('a', '勤続10年の贈り物が襟章だった。'), ex('b', '襟章を付けた。', '付けた'), ex('c', '金曜までに詳細を詰める。'), ex('d', '')],
+    });
+    const { focusCandidates, generateFocusBatch } = await import('../src/lib/aiGenerate');
+    const targets = await focusCandidates();
+    expect(targets.map((t) => t.exampleId)).toEqual(['a', 'c']); // already set (b) and no translation (d) are skipped
+    // The translation of c changes while the request is out: its answer must not be applied.
+    nextOutput = { items: [{ n: 1, ja_focus: '襟章' }, { n: 2, ja_focus: '詳細を詰める' }] };
+    const cur = (await db.expressions.get(id))!;
+    const pending = generateFocusBatch(targets);
+    await db.expressions.put({ ...cur, examples: cur.examples.map((x) => (x.id === 'c' ? { ...x, ja: '金曜までに詰めます。' } : x)) });
+    const r = await pending;
+    const after = (await db.expressions.get(id))!.examples;
+    expect(r.added).toBe(1);
+    expect(after.find((x) => x.id === 'a')!.jaFocus).toBe('襟章');
+    expect(after.find((x) => x.id === 'b')!.jaFocus).toBe('付けた');
+    expect(after.find((x) => x.id === 'c')!.jaFocus).toBeUndefined();
+    expect(calls[0].output_config).toMatchObject({ effort: 'low' });
+    // A span that is not in the sentence is ignored.
+    nextOutput = { items: [{ n: 1, ja_focus: '存在しない' }] };
+    expect((await generateFocusBatch([{ expressionId: id, exampleId: 'c' }])).added).toBe(0);
+  });
+});
