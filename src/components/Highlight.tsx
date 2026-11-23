@@ -39,6 +39,17 @@ export function guessJaFocus(ja: string, meanings: (string | undefined)[]): stri
           }
         }
       }
+      // An inflected verb (降りる → 降りた): match its stem, then the okurigana is added below.
+      if (/[うくすつぬむるぐぶ]$/.test(c)) {
+        const stem = c.slice(0, -1);
+        for (let i = 0; stem.length - i >= 2 && stem.length - i > best.length; i++) {
+          const piece = stem.slice(i);
+          if (KANJI.test(piece[0]) && ja.includes(piece)) {
+            best = piece;
+            break;
+          }
+        }
+      }
     }
   }
   if (!best) return undefined;

@@ -280,6 +280,9 @@ describe('Speaking focus (Japanese highlight)', () => {
     expect(guessJaFocus('彼女は社交的なので大活躍する。', ['社交好きな、社交的な'])).toBe('社交的な');
     // A whole short sense found as is.
     expect(guessJaFocus('正直、勤続10年の贈り物が襟章というのは、ちょっとお粗末だよね。', ['襟章（スーツの襟に付ける小さなピンバッジ）'])).toBe('襟章');
+    // An inflected verb from the meaning.
+    expect(guessJaFocus('最後にはひどい有様になって、ステージを降りたとき、楽屋に行った。', ['（舞台などから）歩いて降りる・立ち去る'])).toBe('降りた');
+    expect(guessJaFocus('彼は会議の途中で立ち去った。', ['（舞台などから）歩いて降りる・立ち去る'])).toBe('立ち去った');
     // Only a 2-char or kana-only overlap: no highlight.
     expect(guessJaFocus('リモコンを独り占めしないで！', ['独占する'])).toBeUndefined();
     expect(guessJaFocus('その理論は誤った前提に基づいている。', ['基礎を置く'])).toBeUndefined();
